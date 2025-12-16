@@ -1,0 +1,172 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build for ${{ matrix.os }}-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          # macOS ARM64 (M1/M2/M3)
+          - os: darwin
+            arch: arm64
+            runner: macos-latest
+            artifact: go-mcp-file-context-server-darwin-arm64
+          # macOS Intel
+          - os: darwin
+            arch: amd64
+            runner: macos-latest
+            artifact: go-mcp-file-context-server-darwin-amd64
+          # Linux AMD64
+          - os: linux
+            arch: amd64
+            runner: ubuntu-latest
+            artifact: go-mcp-file-context-server-linux-amd64
+          # Linux ARM64
+          - os: linux
+            arch: arm64
+            runner: ubuntu-latest
+            artifact: go-mcp-file-context-server-linux-arm64
+          # Windows AMD64
+          - os: windows
+            arch: amd64
+            runner: windows-latest
+            artifact: go-mcp-file-context-server-windows-amd64.exe
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Get dependencies
+        run: go mod download
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+          CGO_ENABLED: 0
+        run: |
+          go build -ldflags="-s -w -X main.Version=${{ github.ref_name || github.event.inputs.version }}" -o ${{ matrix.artifact }} .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          # macOS ARM64
+          cp artifacts/go-mcp-file-context-server-darwin-arm64/go-mcp-file-context-server-darwin-arm64 release/
+          chmod +x release/go-mcp-file-context-server-darwin-arm64
+          # macOS Intel
+          cp artifacts/go-mcp-file-context-server-darwin-amd64/go-mcp-file-context-server-darwin-amd64 release/
+          chmod +x release/go-mcp-file-context-server-darwin-amd64
+          # Linux AMD64
+          cp artifacts/go-mcp-file-context-server-linux-amd64/go-mcp-file-context-server-linux-amd64 release/
+          chmod +x release/go-mcp-file-context-server-linux-amd64
+          # Linux ARM64
+          cp artifacts/go-mcp-file-context-server-linux-arm64/go-mcp-file-context-server-linux-arm64 release/
+          chmod +x release/go-mcp-file-context-server-linux-arm64
+          # Windows
+          cp artifacts/go-mcp-file-context-server-windows-amd64.exe/go-mcp-file-context-server-windows-amd64.exe release/
+
+      - name: Generate checksums
+        run: |
+          cd release
+          sha256sum * > checksums.txt
+          cat checksums.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name || github.event.inputs.version }}
+          name: Release ${{ github.ref_name || github.event.inputs.version }}
+          body: |
+            ## go-mcp-file-context-server ${{ github.ref_name || github.event.inputs.version }}
+
+            A Go port of the MCP File Context Server providing file system context to LLMs.
+
+            ### Downloads
+
+            | Platform | Architecture | File |
+            |----------|--------------|------|
+            | macOS | Apple Silicon (M1/M2/M3) | `go-mcp-file-context-server-darwin-arm64` |
+            | macOS | Intel | `go-mcp-file-context-server-darwin-amd64` |
+            | Linux | x86_64 | `go-mcp-file-context-server-linux-amd64` |
+            | Linux | ARM64 | `go-mcp-file-context-server-linux-arm64` |
+            | Windows | x86_64 | `go-mcp-file-context-server-windows-amd64.exe` |
+
+            ### Installation
+
+            1. Download the appropriate binary for your platform
+            2. Make it executable (macOS/Linux): `chmod +x go-mcp-file-context-server-*`
+            3. Add to your Claude Desktop config or run directly
+
+            ### Features
+
+            - File Operations (read, list, search)
+            - Code Analysis (complexity, dependencies, quality metrics)
+            - Smart LRU Caching
+            - Code Outline Generation
+            - Batch File Retrieval
+
+            All binaries are statically compiled with CGO disabled for maximum portability.
+          draft: false
+          prerelease: false
+          files: |
+            release/*
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+
+      - name: Get dependencies
+        run: go mod download
+
+      - name: Run tests
+        run: go test -v ./...
+
+      - name: Build test
+        run: go build -v .
