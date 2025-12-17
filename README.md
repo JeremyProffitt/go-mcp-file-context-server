@@ -216,81 +216,62 @@ Or in VS Code workspace settings (`.vscode/settings.json`):
 
 Add to your Continue configuration file:
 
-**Location:** `~/.continue/config.json` (macOS/Linux) or `%USERPROFILE%\.continue\config.json` (Windows)
+**Location:** `~/.continue/config.yaml` (macOS/Linux) or `%USERPROFILE%\.continue\config.yaml` (Windows)
 
-```json
-{
-  "experimental": {
-    "modelContextProtocolServers": [
-      {
-        "transport": {
-          "type": "stdio",
-          "command": "/path/to/go-mcp-file-context-server",
-          "args": ["-log-level", "access"]
-        }
-      }
-    ]
-  }
-}
+```yaml
+experimental:
+  modelContextProtocolServers:
+    - transport:
+        type: stdio
+        command: /path/to/go-mcp-file-context-server
+        args:
+          - "-log-level"
+          - "access"
 ```
 
-With environment variables:
+With custom log directory:
 
-```json
-{
-  "experimental": {
-    "modelContextProtocolServers": [
-      {
-        "transport": {
-          "type": "stdio",
-          "command": "/path/to/go-mcp-file-context-server",
-          "args": ["-log-dir", "/custom/log/path", "-log-level", "debug"]
-        }
-      }
-    ]
-  }
-}
+```yaml
+experimental:
+  modelContextProtocolServers:
+    - transport:
+        type: stdio
+        command: /path/to/go-mcp-file-context-server
+        args:
+          - "-log-dir"
+          - "/custom/log/path"
+          - "-log-level"
+          - "debug"
 ```
 
 **Windows example:**
 
-```json
-{
-  "experimental": {
-    "modelContextProtocolServers": [
-      {
-        "transport": {
-          "type": "stdio",
-          "command": "C:\\path\\to\\go-mcp-file-context-server-windows-amd64.exe",
-          "args": ["-log-level", "info"]
-        }
-      }
-    ]
-  }
-}
+```yaml
+experimental:
+  modelContextProtocolServers:
+    - transport:
+        type: stdio
+        command: C:\path\to\go-mcp-file-context-server-windows-amd64.exe
+        args:
+          - "-log-level"
+          - "info"
 ```
 
 ### Multiple Projects Configuration
 
 For Continue.dev with project-specific settings, you can use workspace-relative paths:
 
-```json
-{
-  "experimental": {
-    "modelContextProtocolServers": [
-      {
-        "transport": {
-          "type": "stdio",
-          "command": "go-mcp-file-context-server",
-          "args": [
-            "-log-dir", "./logs/mcp",
-            "-log-level", "access"
-          ]
-        }
-      }
-    ]
-  }
-}
+```yaml
+experimental:
+  modelContextProtocolServers:
+    - transport:
+        type: stdio
+        command: go-mcp-file-context-server
+        args:
+          - "-log-dir"
+          - "./logs/mcp"
+          - "-log-level"
+          - "access"
 ```
 
 ## Available Tools
