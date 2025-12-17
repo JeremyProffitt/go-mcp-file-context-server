@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "file-context": {
+      "command": "${workspaceFolder}/go-mcp-file-context-server.exe",
+      "args": [
+        "-root-dir", "${workspaceFolder}",
+        "-log-dir", "${workspaceFolder}\\logs",
+        "-log-level", "info"
+      ]
+    }
+  }
+}

@@ -242,6 +242,44 @@ Or in VS Code workspace settings (`.vscode/settings.json`) with workspace-relati
 }
 ```
 
+### Claude Code CLI
+
+For local workspace configuration with Claude Code CLI, add a `.claude/mcp.json` file to your project root:
+
+**Windows example:**
+
+```json
+{
+  "mcpServers": {
+    "file-context": {
+      "command": "${workspaceFolder}/go-mcp-file-context-server.exe",
+      "args": [
+        "-root-dir", "${workspaceFolder}",
+        "-log-dir", "${workspaceFolder}\\logs",
+        "-log-level", "debug"
+      ]
+    }
+  }
+}
+```
+
+**macOS/Linux example:**
+
+```json
+{
+  "mcpServers": {
+    "file-context": {
+      "command": "${workspaceFolder}/go-mcp-file-context-server",
+      "args": [
+        "-root-dir", "${workspaceFolder}",
+        "-log-dir", "${workspaceFolder}/logs",
+        "-log-level", "debug"
+      ]
+    }
+  }
+}
+```
+
 ### Continue.dev
 
 Add to your Continue configuration file:
@@ -308,23 +346,44 @@ experimental:
           - "access"
 ```
 
-### Multiple Projects Configuration
+### Continue.dev Local Workspace Configuration
 
-For Continue.dev with project-specific settings, you can use workspace-relative paths:
+For local workspace configuration with Continue CLI (`cn`), add a `.continuerc.yaml` file to your project root:
+
+**Windows example:**
 
 ```yaml
 experimental:
   modelContextProtocolServers:
-    - transport:
+    - name: file-context
+      transport:
         type: stdio
-        command: go-mcp-file-context-server
+        command: ./go-mcp-file-context-server.exe
         args:
           - "-root-dir"
           - "."
           - "-log-dir"
-          - "./logs/mcp"
+          - "./logs"
           - "-log-level"
-          - "access"
+          - "debug"
+```
+
+**macOS/Linux example:**
+
+```yaml
+experimental:
+  modelContextProtocolServers:
+    - name: file-context
+      transport:
+        type: stdio
+        command: ./go-mcp-file-context-server
+        args:
+          - "-root-dir"
+          - "."
+          - "-log-dir"
+          - "./logs"
+          - "-log-level"
+          - "debug"
 ```
 
 **Note:** Using `-root-dir "."` restricts access to the current working directory, which is typically the project root when launched from Continue.dev.

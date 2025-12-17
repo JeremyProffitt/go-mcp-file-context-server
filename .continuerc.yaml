@@ -1,0 +1,13 @@
+experimental:
+  modelContextProtocolServers:
+    - name: file-context
+      transport:
+        type: stdio
+        command: ./go-mcp-file-context-server.exe
+        args:
+          - "-root-dir"
+          - "."
+          - "-log-dir"
+          - "./logs"
+          - "-log-level"
+          - "debug"
