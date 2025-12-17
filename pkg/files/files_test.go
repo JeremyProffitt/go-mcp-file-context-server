@@ -3,6 +3,7 @@ package files
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -22,8 +23,9 @@ func TestGetMimeType(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {
 			result := GetMimeType(tt.path)
-			if result != tt.expected {
-				t.Errorf("GetMimeType(%s) = %s, want %s", tt.path, result, tt.expected)
+			// Check prefix to handle charset suffix variations (e.g., "text/x-go; charset=utf-8")
+			if !strings.HasPrefix(result, tt.expected) {
+				t.Errorf("GetMimeType(%s) = %s, want prefix %s", tt.path, result, tt.expected)
 			}
 		})
 	}
@@ -208,7 +210,8 @@ func TestGetFileMetadata(t *testing.T) {
 		t.Errorf("Expected size 12, got %d", meta.Size)
 	}
 
-	if meta.MimeType != "text/x-go" {
-		t.Errorf("Expected mime type text/x-go, got %s", meta.MimeType)
+	// Check prefix to handle charset suffix variations (e.g., "text/x-go; charset=utf-8")
+	if !strings.HasPrefix(meta.MimeType, "text/x-go") {
+		t.Errorf("Expected mime type prefix text/x-go, got %s", meta.MimeType)
 	}
 }

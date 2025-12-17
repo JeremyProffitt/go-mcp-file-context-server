@@ -220,7 +220,7 @@ func GenerateOutline(path string) (*Outline, error) {
 	// Extract classes with line numbers
 	if pattern, ok := classPatterns[lang]; ok {
 		for i, line := range lines {
-			if matches := pattern.FindStringSubmatch(line); matches != nil && len(matches) > 1 {
+			if matches := pattern.FindStringSubmatch(line); len(matches) > 1 {
 				outline.Classes = append(outline.Classes, ClassOutline{
 					Name: matches[1],
 					Line: i + 1,
@@ -232,7 +232,7 @@ func GenerateOutline(path string) (*Outline, error) {
 	// Extract functions with line numbers
 	if pattern, ok := funcPatterns[lang]; ok {
 		for i, line := range lines {
-			if matches := pattern.FindStringSubmatch(line); matches != nil && len(matches) > 1 && matches[1] != "" {
+			if matches := pattern.FindStringSubmatch(line); len(matches) > 1 && matches[1] != "" {
 				fn := FuncOutline{
 					Name: matches[1],
 					Line: i + 1,

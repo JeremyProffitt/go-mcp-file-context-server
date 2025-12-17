@@ -69,23 +69,26 @@ func NewCache(maxSize int, ttl time.Duration) (*Cache, error) {
 // Get retrieves an entry from the cache
 func (c *Cache) Get(key string) (*Entry, bool) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 
 	entry, ok := c.lru.Get(key)
 	if !ok {
 		c.misses++
+		c.mu.Unlock()
 		return nil, false
 	}
 
 	// Check TTL
 	if time.Since(entry.CachedAt) > c.ttl {
-		c.lru.Remove(key)
 		c.misses++
+		c.mu.Unlock()
+		// Remove outside lock to avoid deadlock with eviction callback
+		c.lru.Remove(key)
 		return nil, false
 	}
 
 	entry.Hits++
 	c.hits++
+	c.mu.Unlock()
 	return entry, true
 }
 

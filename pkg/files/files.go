@@ -102,38 +102,41 @@ var DefaultIgnorePatterns = []string{
 
 // GetMimeType returns the MIME type for a file
 func GetMimeType(path string) string {
-	ext := filepath.Ext(path)
+	ext := strings.ToLower(filepath.Ext(path))
+
+	// Handle source code extensions first to avoid OS MIME type conflicts
+	// (e.g., Windows returns "video/vnd.dlna.mpeg-tts" for .ts files)
+	switch ext {
+	case ".ts":
+		return "text/typescript"
+	case ".tsx":
+		return "text/tsx"
+	case ".jsx":
+		return "text/jsx"
+	case ".go":
+		return "text/x-go"
+	case ".rs":
+		return "text/x-rust"
+	case ".py":
+		return "text/x-python"
+	case ".rb":
+		return "text/x-ruby"
+	case ".java":
+		return "text/x-java"
+	case ".md":
+		return "text/markdown"
+	case ".yaml", ".yml":
+		return "text/yaml"
+	case ".toml":
+		return "text/toml"
+	case ".json":
+		return "application/json"
+	}
+
+	// Fall back to system MIME type detection
 	mimeType := mime.TypeByExtension(ext)
 	if mimeType == "" {
-		// Default common types
-		switch strings.ToLower(ext) {
-		case ".ts":
-			return "text/typescript"
-		case ".tsx":
-			return "text/tsx"
-		case ".jsx":
-			return "text/jsx"
-		case ".go":
-			return "text/x-go"
-		case ".rs":
-			return "text/x-rust"
-		case ".py":
-			return "text/x-python"
-		case ".rb":
-			return "text/x-ruby"
-		case ".java":
-			return "text/x-java"
-		case ".md":
-			return "text/markdown"
-		case ".yaml", ".yml":
-			return "text/yaml"
-		case ".toml":
-			return "text/toml"
-		case ".json":
-			return "application/json"
-		default:
-			return "application/octet-stream"
-		}
+		return "application/octet-stream"
 	}
 	return mimeType
 }
