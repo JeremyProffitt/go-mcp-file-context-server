@@ -28,15 +28,18 @@ const (
 const (
 	EnvLogDir   = "MCP_LOG_DIR"
 	EnvLogLevel = "MCP_LOG_LEVEL"
+	EnvRootDir  = "MCP_ROOT_DIR"
 )
 
 var fileCache *cache.Cache
 var logger *logging.Logger
+var allowedRootDir string // If set, restricts all file operations to this directory
 
 func main() {
 	// Parse command line flags
 	logDir := flag.String("log-dir", "", "Directory for log files (default: ~/go-mcp-file-context-server/logs)")
 	logLevel := flag.String("log-level", "info", "Log level: off, error, warn, info, access, debug")
+	rootDir := flag.String("root-dir", "", "Root directory to restrict file access (default: no restriction)")
 	showVersion := flag.Bool("version", false, "Show version information")
 	showHelp := flag.Bool("help", false, "Show help information")
 	flag.Parse()
@@ -66,6 +69,30 @@ func main() {
 		resolvedLogLevel = envLevel
 	}
 	parsedLogLevel := logging.ParseLogLevel(resolvedLogLevel)
+
+	// Resolve root directory (CLI flag > env var > no restriction)
+	resolvedRootDir := *rootDir
+	if resolvedRootDir == "" {
+		resolvedRootDir = os.Getenv(EnvRootDir)
+	}
+	if resolvedRootDir != "" {
+		absRoot, err := filepath.Abs(resolvedRootDir)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Invalid root directory %q: %v\n", resolvedRootDir, err)
+			os.Exit(1)
+		}
+		// Verify the directory exists
+		info, err := os.Stat(absRoot)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Root directory does not exist %q: %v\n", absRoot, err)
+			os.Exit(1)
+		}
+		if !info.IsDir() {
+			fmt.Fprintf(os.Stderr, "Root path is not a directory: %q\n", absRoot)
+			os.Exit(1)
+		}
+		allowedRootDir = absRoot
+	}
 
 	// Initialize logger
 	var err error
@@ -101,6 +128,13 @@ func main() {
 	}
 	logger.Info("Cache initialized: size=%d, ttl=%s", DefaultCacheSize, DefaultCacheTTL)
 
+	// Log root directory restriction
+	if allowedRootDir != "" {
+		logger.Info("Root directory restriction enabled: %s", allowedRootDir)
+	} else {
+		logger.Info("Root directory restriction: disabled (full filesystem access)")
+	}
+
 	// Create MCP server
 	server := mcp.NewServer("file-context-server", Version)
 	logger.Info("MCP server created: name=%s, version=%s", "file-context-server", Version)
@@ -130,6 +164,10 @@ USAGE:
     %s [OPTIONS]
 
 OPTIONS:
+    -root-dir <path>    Root directory to restrict file access
+                        Default: no restriction (full filesystem access)
+                        Env: MCP_ROOT_DIR
+
     -log-dir <path>     Directory for log files
                         Default: ~/go-mcp-file-context-server/logs
                         Env: MCP_LOG_DIR
@@ -143,6 +181,7 @@ OPTIONS:
     -help               Show this help message
 
 ENVIRONMENT VARIABLES:
+    MCP_ROOT_DIR        Restrict file access to this directory
     MCP_LOG_DIR         Override default log directory
     MCP_LOG_LEVEL       Override default log level
 
@@ -155,8 +194,11 @@ LOG LEVELS:
     debug    Log detailed debugging information
 
 EXAMPLES:
-    # Run with default settings
+    # Run with default settings (full filesystem access)
     %s
+
+    # Restrict access to a specific project directory
+    %s -root-dir /home/user/myproject
 
     # Run with custom log directory
     %s -log-dir /var/log/mcp
@@ -165,9 +207,9 @@ EXAMPLES:
     %s -log-level debug
 
     # Using environment variables
-    MCP_LOG_DIR=/var/log/mcp MCP_LOG_LEVEL=access %s
+    MCP_ROOT_DIR=/home/user/project MCP_LOG_LEVEL=access %s
 
-`, AppName, AppName, AppName, AppName, AppName, AppName)
+`, AppName, AppName, AppName, AppName, AppName, AppName, AppName)
 }
 
 func registerTools(server *mcp.Server) {
@@ -417,10 +459,10 @@ func handleListContextFiles(args map[string]interface{}) (*mcp.CallToolResult, e
 	includeHidden := getBool(args, "includeHidden", false)
 	fileTypes := getStringArray(args, "fileTypes")
 
-	absPath, err := filepath.Abs(path)
+	absPath, err := validatePath(path)
 	if err != nil {
-		logger.Error("list_context_files: invalid path %q: %v", path, err)
-		return errorResult(fmt.Sprintf("Invalid path: %s", err.Error()))
+		logger.Error("list_context_files: %v", err)
+		return errorResult(err.Error())
 	}
 
 	entries, err := files.ListFiles(absPath, recursive, fileTypes, includeHidden)
@@ -445,10 +487,10 @@ func handleReadContext(args map[string]interface{}) (*mcp.CallToolResult, error)
 	fileTypes := getStringArray(args, "fileTypes")
 	chunkNumber := getInt(args, "chunkNumber", 0)
 
-	absPath, err := filepath.Abs(path)
+	absPath, err := validatePath(path)
 	if err != nil {
-		logger.Error("read_context: invalid path %q: %v", path, err)
-		return errorResult(fmt.Sprintf("Invalid path: %s", err.Error()))
+		logger.Error("read_context: %v", err)
+		return errorResult(err.Error())
 	}
 
 	info, err := os.Stat(absPath)
@@ -531,10 +573,10 @@ func handleSearchContext(args map[string]interface{}) (*mcp.CallToolResult, erro
 	contextLines := getInt(args, "contextLines", 2)
 	maxResults := getInt(args, "maxResults", 100)
 
-	absPath, err := filepath.Abs(path)
+	absPath, err := validatePath(path)
 	if err != nil {
-		logger.Error("search_context: invalid path %q: %v", path, err)
-		return errorResult(fmt.Sprintf("Invalid path: %s", err.Error()))
+		logger.Error("search_context: %v", err)
+		return errorResult(err.Error())
 	}
 
 	results, err := files.SearchFiles(absPath, pattern, recursive, fileTypes, contextLines, maxResults)
@@ -557,10 +599,10 @@ func handleAnalyzeCode(args map[string]interface{}) (*mcp.CallToolResult, error)
 	recursive := getBool(args, "recursive", true)
 	fileTypes := getStringArray(args, "fileTypes")
 
-	absPath, err := filepath.Abs(path)
+	absPath, err := validatePath(path)
 	if err != nil {
-		logger.Error("analyze_code: invalid path %q: %v", path, err)
-		return errorResult(fmt.Sprintf("Invalid path: %s", err.Error()))
+		logger.Error("analyze_code: %v", err)
+		return errorResult(err.Error())
 	}
 
 	info, err := os.Stat(absPath)
@@ -605,10 +647,10 @@ func handleGenerateOutline(args map[string]interface{}) (*mcp.CallToolResult, er
 
 	path, _ := args["path"].(string)
 
-	absPath, err := filepath.Abs(path)
+	absPath, err := validatePath(path)
 	if err != nil {
-		logger.Error("generate_outline: invalid path %q: %v", path, err)
-		return errorResult(fmt.Sprintf("Invalid path: %s", err.Error()))
+		logger.Error("generate_outline: %v", err)
+		return errorResult(err.Error())
 	}
 
 	outline, err := analysis.GenerateOutline(absPath)
@@ -641,10 +683,10 @@ func handleGetChunkCount(args map[string]interface{}) (*mcp.CallToolResult, erro
 	path, _ := args["path"].(string)
 	chunkSize := getInt64(args, "chunkSize", DefaultChunkSize)
 
-	absPath, err := filepath.Abs(path)
+	absPath, err := validatePath(path)
 	if err != nil {
-		logger.Error("get_chunk_count: invalid path %q: %v", path, err)
-		return errorResult(fmt.Sprintf("Invalid path: %s", err.Error()))
+		logger.Error("get_chunk_count: %v", err)
+		return errorResult(err.Error())
 	}
 
 	count, err := analysis.GetChunkCount(absPath, chunkSize)
@@ -688,11 +730,11 @@ func handleGetFiles(args map[string]interface{}) (*mcp.CallToolResult, error) {
 			continue
 		}
 
-		absPath, err := filepath.Abs(fileName)
+		absPath, err := validatePath(fileName)
 		if err != nil {
-			logger.Error("getFiles: invalid path %q: %v", fileName, err)
+			logger.Error("getFiles: %v", err)
 			results[fileName] = map[string]interface{}{
-				"error": fmt.Sprintf("Invalid path: %s", err.Error()),
+				"error": err.Error(),
 			}
 			continue
 		}
@@ -724,10 +766,10 @@ func handleGetFolderStructure(args map[string]interface{}) (*mcp.CallToolResult,
 	path, _ := args["path"].(string)
 	maxDepth := getInt(args, "maxDepth", 5)
 
-	absPath, err := filepath.Abs(path)
+	absPath, err := validatePath(path)
 	if err != nil {
-		logger.Error("get_folder_structure: invalid path %q: %v", path, err)
-		return errorResult(fmt.Sprintf("Invalid path: %s", err.Error()))
+		logger.Error("get_folder_structure: %v", err)
+		return errorResult(err.Error())
 	}
 
 	structure, err := analysis.GetFolderStructure(absPath, maxDepth)
@@ -742,6 +784,54 @@ func handleGetFolderStructure(args map[string]interface{}) (*mcp.CallToolResult,
 }
 
 // Helper functions
+
+// validatePath checks if the given path is within the allowed root directory.
+// Returns the absolute path if valid, or an error if access is denied.
+func validatePath(path string) (string, error) {
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("invalid path: %w", err)
+	}
+
+	// If no root directory restriction, allow all paths
+	if allowedRootDir == "" {
+		return absPath, nil
+	}
+
+	// Check if the absolute path is within the allowed root directory
+	// Use filepath.Rel to check if path is relative to root (not starting with ..)
+	relPath, err := filepath.Rel(allowedRootDir, absPath)
+	if err != nil {
+		return "", fmt.Errorf("access denied: path outside allowed directory")
+	}
+
+	// If the relative path starts with "..", it's outside the root
+	if len(relPath) >= 2 && relPath[:2] == ".." {
+		return "", fmt.Errorf("access denied: path %q is outside allowed directory %q", path, allowedRootDir)
+	}
+
+	// Also check for absolute paths that might have been crafted to escape
+	if !isSubPath(allowedRootDir, absPath) {
+		return "", fmt.Errorf("access denied: path %q is outside allowed directory %q", path, allowedRootDir)
+	}
+
+	return absPath, nil
+}
+
+// isSubPath checks if child is a subpath of parent
+func isSubPath(parent, child string) bool {
+	parent = filepath.Clean(parent)
+	child = filepath.Clean(child)
+
+	// Ensure parent ends with separator for proper prefix matching
+	if parent[len(parent)-1] != filepath.Separator {
+		parent = parent + string(filepath.Separator)
+	}
+
+	// Child is a subpath if it starts with parent or equals parent (without trailing separator)
+	return child == filepath.Clean(parent[:len(parent)-1]) || len(child) >= len(parent) && child[:len(parent)] == parent
+}
+
 func textResult(text string) (*mcp.CallToolResult, error) {
 	return &mcp.CallToolResult{
 		Content: []mcp.ContentItem{{Type: "text", Text: text}},

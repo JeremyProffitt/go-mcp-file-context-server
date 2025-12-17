@@ -76,6 +76,9 @@ go build -o go-mcp-file-context-server .
 Usage: go-mcp-file-context-server [OPTIONS]
 
 Options:
+  -root-dir <path>    Root directory to restrict file access
+                      Default: no restriction (full filesystem access)
+
   -log-dir <path>     Directory for log files
                       Default: ~/go-mcp-file-context-server/logs
 
@@ -91,6 +94,7 @@ Options:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
+| `MCP_ROOT_DIR` | Restrict file access to this directory | No restriction |
 | `MCP_LOG_DIR` | Directory for log files | `~/go-mcp-file-context-server/logs` |
 | `MCP_LOG_LEVEL` | Log level (off, error, warn, info, access, debug) | `info` |
 
@@ -141,18 +145,23 @@ Add to your Claude Desktop configuration file:
 **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
 **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
 
+**Basic setup (restrict to project directory):**
+
 ```json
 {
   "mcpServers": {
     "file-context": {
       "command": "/path/to/go-mcp-file-context-server",
-      "args": ["-log-level", "access"]
+      "args": [
+        "-root-dir", "/Users/username/projects/myproject",
+        "-log-level", "access"
+      ]
     }
   }
 }
 ```
 
-With environment variables:
+**With environment variables:**
 
 ```json
 {
@@ -160,6 +169,7 @@ With environment variables:
     "file-context": {
       "command": "/path/to/go-mcp-file-context-server",
       "env": {
+        "MCP_ROOT_DIR": "/Users/username/projects/myproject",
         "MCP_LOG_DIR": "/var/log/mcp-file-context",
         "MCP_LOG_LEVEL": "debug"
       }
@@ -175,7 +185,23 @@ With environment variables:
   "mcpServers": {
     "file-context": {
       "command": "C:\\path\\to\\go-mcp-file-context-server-windows-amd64.exe",
-      "args": ["-log-level", "info"]
+      "args": [
+        "-root-dir", "C:\\Users\\username\\projects\\myproject",
+        "-log-level", "info"
+      ]
+    }
+  }
+}
+```
+
+**Full filesystem access (no restriction):**
+
+```json
+{
+  "mcpServers": {
+    "file-context": {
+      "command": "/path/to/go-mcp-file-context-server",
+      "args": ["-log-level", "access"]
     }
   }
 }
@@ -190,13 +216,16 @@ Add to your VS Code settings (`settings.json`):
   "claude.mcpServers": {
     "file-context": {
       "command": "/path/to/go-mcp-file-context-server",
-      "args": ["-log-level", "access"]
+      "args": [
+        "-root-dir", "/path/to/project",
+        "-log-level", "access"
+      ]
     }
   }
 }
 ```
 
-Or in VS Code workspace settings (`.vscode/settings.json`):
+Or in VS Code workspace settings (`.vscode/settings.json`) with workspace-relative paths:
 
 ```json
 {
@@ -205,6 +234,7 @@ Or in VS Code workspace settings (`.vscode/settings.json`):
       "command": "${workspaceFolder}/bin/go-mcp-file-context-server",
       "args": ["-log-level", "debug"],
       "env": {
+        "MCP_ROOT_DIR": "${workspaceFolder}",
         "MCP_LOG_DIR": "${workspaceFolder}/logs"
       }
     }
@@ -218,6 +248,8 @@ Add to your Continue configuration file:
 
 **Location:** `~/.continue/config.yaml` (macOS/Linux) or `%USERPROFILE%\.continue\config.yaml` (Windows)
 
+**Basic setup (restrict to project directory):**
+
 ```yaml
 experimental:
   modelContextProtocolServers:
@@ -225,11 +257,13 @@ experimental:
         type: stdio
         command: /path/to/go-mcp-file-context-server
         args:
+          - "-root-dir"
+          - "/home/username/projects/myproject"
           - "-log-level"
           - "access"
 ```
 
-With custom log directory:
+**With custom log directory:**
 
 ```yaml
 experimental:
@@ -238,8 +272,10 @@ experimental:
         type: stdio
         command: /path/to/go-mcp-file-context-server
         args:
+          - "-root-dir"
+          - "/home/username/projects/myproject"
           - "-log-dir"
-          - "/custom/log/path"
+          - "/var/log/mcp"
           - "-log-level"
           - "debug"
 ```
@@ -253,8 +289,23 @@ experimental:
         type: stdio
         command: C:\path\to\go-mcp-file-context-server-windows-amd64.exe
         args:
+          - "-root-dir"
+          - "C:\\Users\\username\\projects\\myproject"
           - "-log-level"
           - "info"
+```
+
+**Full filesystem access (no restriction):**
+
+```yaml
+experimental:
+  modelContextProtocolServers:
+    - transport:
+        type: stdio
+        command: /path/to/go-mcp-file-context-server
+        args:
+          - "-log-level"
+          - "access"
 ```
 
 ### Multiple Projects Configuration
@@ -268,11 +319,15 @@ experimental:
         type: stdio
         command: go-mcp-file-context-server
         args:
+          - "-root-dir"
+          - "."
           - "-log-dir"
           - "./logs/mcp"
           - "-log-level"
           - "access"
 ```
+
+**Note:** Using `-root-dir "."` restricts access to the current working directory, which is typically the project root when launched from Continue.dev.
 
 ## Available Tools
 
