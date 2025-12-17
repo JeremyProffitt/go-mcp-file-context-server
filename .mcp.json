@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "file-context": {
+      "command": "C:\\dev\\go-mcp-file-context-server\\go-mcp-file-context-server.exe",
+      "args": [
+        "-root-dir", "C:\\dev\\go-mcp-file-context-server",
+        "-log-level", "info"
+      ]
+    }
+  }
+}
