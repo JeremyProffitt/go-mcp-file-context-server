@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"sync"
+	"time"
 )
 
 // ToolHandler is a function that handles a tool call
@@ -47,28 +48,84 @@ func (s *Server) RegisterTool(tool Tool, handler ToolHandler) {
 
 // Run starts the server and processes requests from stdin
 func (s *Server) Run() error {
-	scanner := bufio.NewScanner(s.stdin)
-	// Increase buffer size for large messages
-	buf := make([]byte, 0, 64*1024)
-	scanner.Buffer(buf, 10*1024*1024)
+	// Use a channel-based approach to handle stdin reading
+	// This allows us to implement a timeout for initial connection
+	lines := make(chan string)
+	errors := make(chan error)
 
-	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
-			continue
+	go func() {
+		reader := bufio.NewReader(s.stdin)
+		for {
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				if err == io.EOF {
+					// On Windows, stdin can appear closed before client connects
+					// Check if we got any partial data
+					if line != "" {
+						lines <- line
+					}
+					errors <- io.EOF
+					return
+				}
+				errors <- err
+				return
+			}
+			lines <- line
 		}
+	}()
 
-		response := s.handleMessage([]byte(line))
-		if response != nil {
-			s.sendResponse(response)
+	receivedData := false
+	initialTimeout := time.After(30 * time.Second) // Wait up to 30s for first message
+
+	for {
+		select {
+		case line := <-lines:
+			// Reset timeout behavior once we receive data
+			receivedData = true
+
+			line = trimLine(line)
+			if line == "" {
+				continue
+			}
+
+			response := s.handleMessage([]byte(line))
+			if response != nil {
+				s.sendResponse(response)
+			}
+
+		case err := <-errors:
+			if err == io.EOF {
+				if receivedData {
+					// Normal shutdown - client closed connection after communicating
+					return nil
+				}
+				// EOF before receiving any data - likely a connection issue
+				return fmt.Errorf("stdin closed before receiving any data (client may not have connected properly)")
+			}
+			return fmt.Errorf("read error: %w", err)
+
+		case <-initialTimeout:
+			if !receivedData {
+				// No data received within timeout - but don't exit, keep waiting
+				// The client might be slow to send the first message
+				// Reset the timeout by creating a much longer one
+				initialTimeout = time.After(24 * time.Hour) // Effectively disable timeout
+			}
 		}
 	}
+}
 
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("scanner error: %w", err)
+// trimLine removes leading/trailing whitespace including newlines
+func trimLine(s string) string {
+	start := 0
+	end := len(s)
+	for start < end && (s[start] == ' ' || s[start] == '\t' || s[start] == '\n' || s[start] == '\r') {
+		start++
 	}
-
-	return nil
+	for end > start && (s[end-1] == ' ' || s[end-1] == '\t' || s[end-1] == '\n' || s[end-1] == '\r') {
+		end--
+	}
+	return s[start:end]
 }
 
 func (s *Server) handleMessage(data []byte) *JSONRPCResponse {
