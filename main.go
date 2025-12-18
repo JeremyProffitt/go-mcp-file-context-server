@@ -54,26 +54,48 @@ func main() {
 		os.Exit(0)
 	}
 
-	// Resolve log directory (CLI flag > env var > default)
-	resolvedLogDir := *logDir
-	if resolvedLogDir == "" {
-		resolvedLogDir = os.Getenv(EnvLogDir)
-	}
-	if resolvedLogDir == "" {
+	// Resolve log directory (CLI flag > env var > default) and track source
+	var resolvedLogDir string
+	var logDirSource logging.ConfigSource
+	if *logDir != "" {
+		resolvedLogDir = *logDir
+		logDirSource = logging.SourceFlag
+	} else if envVal := os.Getenv(EnvLogDir); envVal != "" {
+		resolvedLogDir = envVal
+		logDirSource = logging.SourceEnvironment
+	} else {
 		resolvedLogDir = logging.DefaultLogDir(AppName)
+		logDirSource = logging.SourceDefault
 	}
 
-	// Resolve log level (CLI flag > env var > default)
-	resolvedLogLevel := *logLevel
-	if envLevel := os.Getenv(EnvLogLevel); envLevel != "" && *logLevel == "info" {
-		resolvedLogLevel = envLevel
+	// Resolve log level (CLI flag > env var > default) and track source
+	var resolvedLogLevel string
+	var logLevelSource logging.ConfigSource
+	if *logLevel != "info" {
+		// Non-default flag value means flag was explicitly set
+		resolvedLogLevel = *logLevel
+		logLevelSource = logging.SourceFlag
+	} else if envVal := os.Getenv(EnvLogLevel); envVal != "" {
+		resolvedLogLevel = envVal
+		logLevelSource = logging.SourceEnvironment
+	} else {
+		resolvedLogLevel = "info"
+		logLevelSource = logging.SourceDefault
 	}
 	parsedLogLevel := logging.ParseLogLevel(resolvedLogLevel)
 
-	// Resolve root directory (CLI flag > env var > no restriction)
-	resolvedRootDir := *rootDir
-	if resolvedRootDir == "" {
-		resolvedRootDir = os.Getenv(EnvRootDir)
+	// Resolve root directory (CLI flag > env var > no restriction) and track source
+	var resolvedRootDir string
+	var rootDirSource logging.ConfigSource
+	if *rootDir != "" {
+		resolvedRootDir = *rootDir
+		rootDirSource = logging.SourceFlag
+	} else if envVal := os.Getenv(EnvRootDir); envVal != "" {
+		resolvedRootDir = envVal
+		rootDirSource = logging.SourceEnvironment
+	} else {
+		resolvedRootDir = ""
+		rootDirSource = logging.SourceDefault
 	}
 	if resolvedRootDir != "" {
 		absRoot, err := filepath.Abs(resolvedRootDir)
@@ -107,11 +129,12 @@ func main() {
 	}
 	defer logger.Close()
 
-	// Log startup information
+	// Log startup information with configuration sources
 	startupInfo := logging.GetStartupInfo(
 		Version,
-		resolvedLogDir,
-		parsedLogLevel,
+		logging.ConfigValue{Value: resolvedLogDir, Source: logDirSource},
+		logging.ConfigValue{Value: resolvedLogLevel, Source: logLevelSource},
+		logging.ConfigValue{Value: allowedRootDir, Source: rootDirSource},
 		DefaultCacheSize,
 		DefaultCacheTTL,
 		DefaultMaxSize,

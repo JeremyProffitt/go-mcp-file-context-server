@@ -14,6 +14,18 @@ import (
 // LogLevel represents the severity of a log message
 type LogLevel int
 
+// ConfigSource indicates where a configuration value came from
+type ConfigSource string
+
+const (
+	// SourceDefault indicates the value is the default
+	SourceDefault ConfigSource = "default"
+	// SourceEnvironment indicates the value came from an environment variable
+	SourceEnvironment ConfigSource = "environment"
+	// SourceFlag indicates the value came from a command-line flag
+	SourceFlag ConfigSource = "flag"
+)
+
 const (
 	// LevelOff disables all logging
 	LevelOff LogLevel = iota
@@ -269,15 +281,22 @@ func (l *Logger) ToolCall(toolName string, args map[string]interface{}) {
 	l.Info("TOOL_CALL tool=%q args=%v", toolName, argKeys)
 }
 
-// Startup logs detailed startup information
+// ConfigValue holds a configuration value and its source
+type ConfigValue struct {
+	Value  string
+	Source ConfigSource
+}
+
+// StartupInfo holds startup information with configuration sources
 type StartupInfo struct {
 	Version     string
 	GoVersion   string
 	OS          string
 	Arch        string
 	NumCPU      int
-	LogDir      string
-	LogLevel    LogLevel
+	LogDir      ConfigValue
+	LogLevel    ConfigValue
+	RootDir     ConfigValue
 	CacheSize   int
 	CacheTTL    time.Duration
 	MaxFileSize int64
@@ -300,14 +319,19 @@ func (l *Logger) LogStartup(info StartupInfo) {
 	l.Info("Process ID: %d", info.PID)
 	l.Info("Start Time: %s", info.StartTime.Format(time.RFC3339))
 	l.Info("----------------------------------------")
-	l.Info("CONFIGURATION")
+	l.Info("CONFIGURATION (value [source])")
 	l.Info("----------------------------------------")
-	l.Info("Log Directory: %s", info.LogDir)
-	l.Info("Log Level: %s", info.LogLevel.String())
-	l.Info("Cache Size: %d entries", info.CacheSize)
-	l.Info("Cache TTL: %s", info.CacheTTL)
-	l.Info("Max File Size: %d bytes", info.MaxFileSize)
-	l.Info("Chunk Size: %d bytes", info.ChunkSize)
+	l.Info("Log Directory: %s [%s]", info.LogDir.Value, info.LogDir.Source)
+	l.Info("Log Level: %s [%s]", info.LogLevel.Value, info.LogLevel.Source)
+	if info.RootDir.Value != "" {
+		l.Info("Root Directory: %s [%s]", info.RootDir.Value, info.RootDir.Source)
+	} else {
+		l.Info("Root Directory: <unrestricted> [%s]", info.RootDir.Source)
+	}
+	l.Info("Cache Size: %d entries [default]", info.CacheSize)
+	l.Info("Cache TTL: %s [default]", info.CacheTTL)
+	l.Info("Max File Size: %d bytes [default]", info.MaxFileSize)
+	l.Info("Chunk Size: %d bytes [default]", info.ChunkSize)
 	l.Info("----------------------------------------")
 	l.Info("ENVIRONMENT")
 	l.Info("----------------------------------------")
@@ -351,7 +375,7 @@ func (l *Logger) SetOutput(w io.Writer) {
 }
 
 // GetStartupInfo returns a populated StartupInfo struct
-func GetStartupInfo(version string, logDir string, logLevel LogLevel, cacheSize int, cacheTTL time.Duration, maxFileSize, chunkSize int64) StartupInfo {
+func GetStartupInfo(version string, logDir ConfigValue, logLevel ConfigValue, rootDir ConfigValue, cacheSize int, cacheTTL time.Duration, maxFileSize, chunkSize int64) StartupInfo {
 	return StartupInfo{
 		Version:     version,
 		GoVersion:   runtime.Version(),
@@ -360,6 +384,7 @@ func GetStartupInfo(version string, logDir string, logLevel LogLevel, cacheSize 
 		NumCPU:      runtime.NumCPU(),
 		LogDir:      logDir,
 		LogLevel:    logLevel,
+		RootDir:     rootDir,
 		CacheSize:   cacheSize,
 		CacheTTL:    cacheTTL,
 		MaxFileSize: maxFileSize,
