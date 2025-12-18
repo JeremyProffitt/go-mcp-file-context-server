@@ -27,11 +27,25 @@ jobs:
       - name: Get dependencies
         run: go mod download
 
-      - name: Run tests
+      - name: Run unit tests
         run: go test -v -race ./...
 
-      - name: Build
-        run: go build -v .
+      - name: Build server
+        run: go build -v -o go-mcp-file-context-server${{ matrix.os == 'windows-latest' && '.exe' || '' }} .
+
+      - name: Build MCP test client
+        run: go build -v -o mcp_test_client${{ matrix.os == 'windows-latest' && '.exe' || '' }} .
+        working-directory: test/mcp_test_client
+
+      - name: Run MCP integration tests
+        run: |
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            MCP_SERVER_PATH="${{ github.workspace }}/go-mcp-file-context-server.exe" ./mcp_test_client.exe
+          else
+            MCP_SERVER_PATH="${{ github.workspace }}/go-mcp-file-context-server" ./mcp_test_client
+          fi
+        working-directory: test/mcp_test_client
+        shell: bash
 
   build-all-platforms:
     name: Build All Platforms
