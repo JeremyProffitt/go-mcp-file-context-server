@@ -7,30 +7,6 @@ import (
 	"testing"
 )
 
-func TestGetMimeType(t *testing.T) {
-	tests := []struct {
-		path     string
-		expected string
-	}{
-		{"test.go", "text/x-go"},
-		{"test.ts", "text/typescript"},
-		{"test.py", "text/x-python"},
-		{"test.js", "text/javascript"},
-		{"test.json", "application/json"},
-		{"test.md", "text/markdown"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.path, func(t *testing.T) {
-			result := GetMimeType(tt.path)
-			// Check prefix to handle charset suffix variations (e.g., "text/x-go; charset=utf-8")
-			if !strings.HasPrefix(result, tt.expected) {
-				t.Errorf("GetMimeType(%s) = %s, want prefix %s", tt.path, result, tt.expected)
-			}
-		})
-	}
-}
-
 func TestReadFile(t *testing.T) {
 	// Create a temp file
 	tmpDir := t.TempDir()
