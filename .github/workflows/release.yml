@@ -81,6 +81,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Delete existing release if exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ github.ref_name || github.event.inputs.version }}"
+          echo "Checking for existing release with tag: $TAG"
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "Existing release found. Deleting release (keeping tag for this build)..."
+            gh release delete "$TAG" --yes || true
+          else
+            echo "No existing release found for $TAG"
+          fi
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -149,6 +162,23 @@ jobs:
           prerelease: false
           files: |
             release/*
+
+      - name: Cleanup old releases (keep newest 5)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "Fetching all releases..."
+          RELEASES=$(gh release list --limit 100 --json tagName,createdAt --jq 'sort_by(.createdAt) | reverse | .[5:] | .[].tagName')
+          
+          if [ -z "$RELEASES" ]; then
+            echo "No old releases to delete (5 or fewer exist)"
+          else
+            echo "Deleting old releases (keeping newest 5)..."
+            for TAG in $RELEASES; do
+              echo "Deleting release: $TAG"
+              gh release delete "$TAG" --yes --cleanup-tag || true
+            done
+          fi
 
   test:
     name: Test
