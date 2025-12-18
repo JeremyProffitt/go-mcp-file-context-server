@@ -2,6 +2,8 @@
 
 This guide covers integrating the go-mcp-file-context-server with Continue.dev for both the VS Code extension and the `cn` CLI.
 
+> **Important:** MCP tools can only be used in **agent mode** in Continue.dev.
+
 ## Configuration Files Overview
 
 Continue.dev uses **different configuration files** depending on the client:
@@ -32,7 +34,7 @@ C:\Users\YourName\.continue\config.yaml
 
 ### Step 2: Add MCP Server Configuration
 
-Edit `config.yaml` and add the `experimental.modelContextProtocolServers` section:
+Edit `config.yaml` and add the `mcpServers` section:
 
 **Windows Example:**
 ```yaml
@@ -42,17 +44,14 @@ schema: v1
 
 models: []
 
-experimental:
-  modelContextProtocolServers:
-    - name: file-context
-      transport:
-        type: stdio
-        command: C:\dev\go-mcp-file-context-server\go-mcp-file-context-server.exe
-        args:
-          - "-root-dir"
-          - "C:\dev"
-          - "-log-level"
-          - "debug"
+mcpServers:
+  - name: file-context
+    command: "C:/dev/go-mcp-file-context-server/go-mcp-file-context-server.exe"
+    args:
+      - "-root-dir"
+      - "C:/dev"
+      - "-log-level"
+      - "debug"
 ```
 
 **macOS/Linux Example:**
@@ -63,18 +62,17 @@ schema: v1
 
 models: []
 
-experimental:
-  modelContextProtocolServers:
-    - name: file-context
-      transport:
-        type: stdio
-        command: /usr/local/bin/go-mcp-file-context-server
-        args:
-          - "-root-dir"
-          - "/home/username/projects"
-          - "-log-level"
-          - "debug"
+mcpServers:
+  - name: file-context
+    command: /usr/local/bin/go-mcp-file-context-server
+    args:
+      - "-root-dir"
+      - "/home/username/projects"
+      - "-log-level"
+      - "debug"
 ```
+
+> **Note:** On Windows, use forward slashes (`/`) in paths for YAML compatibility.
 
 ### Step 3: Reload VS Code
 
@@ -86,7 +84,7 @@ After editing the config, reload VS Code:
 ### Troubleshooting VS Code Extension
 
 **Check Continue Output Panel:**
-1. Press `Ctrl+Shift+P` → "Continue: Focus on Continue Output"
+1. Press `Ctrl+Shift+P` -> "Continue: Focus on Continue Output"
 2. Look for MCP-related errors or connection issues
 
 **Common Issues:**
@@ -94,9 +92,11 @@ After editing the config, reload VS Code:
 | Issue | Solution |
 |-------|----------|
 | MCP server not registering | Ensure you edited `config.yaml`, not `continue.yaml` |
+| MCP tools not available | MCP only works in **agent mode** |
 | Binary not found | Use absolute path to the executable |
 | Permission denied | Ensure binary is executable (`chmod +x` on macOS/Linux) |
 | Config syntax error | Validate YAML syntax (indentation matters) |
+| Path issues on Windows | Use forward slashes (`/`) instead of backslashes |
 
 ---
 
@@ -116,36 +116,30 @@ C:\Users\YourName\.continue\continue.yaml
 
 ### Step 2: Add MCP Server Configuration
 
-Edit `continue.yaml` and add the MCP server under `experimental`:
+Edit `continue.yaml` and add the `mcpServers` section:
 
 **Windows Example:**
 ```yaml
-experimental:
-  modelContextProtocolServers:
-    - name: file-context
-      transport:
-        type: stdio
-        command: C:\dev\go-mcp-file-context-server\go-mcp-file-context-server.exe
-        args:
-          - "-root-dir"
-          - "C:\dev"
-          - "-log-level"
-          - "debug"
+mcpServers:
+  - name: file-context
+    command: "C:/dev/go-mcp-file-context-server/go-mcp-file-context-server.exe"
+    args:
+      - "-root-dir"
+      - "C:/dev"
+      - "-log-level"
+      - "debug"
 ```
 
 **macOS/Linux Example:**
 ```yaml
-experimental:
-  modelContextProtocolServers:
-    - name: file-context
-      transport:
-        type: stdio
-        command: /usr/local/bin/go-mcp-file-context-server
-        args:
-          - "-root-dir"
-          - "/home/username/projects"
-          - "-log-level"
-          - "debug"
+mcpServers:
+  - name: file-context
+    command: /usr/local/bin/go-mcp-file-context-server
+    args:
+      - "-root-dir"
+      - "/home/username/projects"
+      - "-log-level"
+      - "debug"
 ```
 
 ---
@@ -156,19 +150,16 @@ For project-specific settings, create a `.continuerc.yaml` file in your project 
 
 **Example `.continuerc.yaml`:**
 ```yaml
-experimental:
-  modelContextProtocolServers:
-    - name: file-context
-      transport:
-        type: stdio
-        command: ./go-mcp-file-context-server.exe  # Relative to project root
-        args:
-          - "-root-dir"
-          - "."
-          - "-log-dir"
-          - "./logs"
-          - "-log-level"
-          - "debug"
+mcpServers:
+  - name: file-context
+    command: ./go-mcp-file-context-server.exe  # Relative to project root
+    args:
+      - "-root-dir"
+      - "."
+      - "-log-dir"
+      - "./logs"
+      - "-log-level"
+      - "debug"
 ```
 
 ---
@@ -229,19 +220,16 @@ models:
       - chat
       - edit
 
-experimental:
-  modelContextProtocolServers:
-    - name: file-context
-      transport:
-        type: stdio
-        command: C:\dev\go-mcp-file-context-server\go-mcp-file-context-server.exe
-        args:
-          - "-root-dir"
-          - "C:\dev\myproject"
-          - "-log-dir"
-          - "C:\logs\mcp"
-          - "-log-level"
-          - "access"
+mcpServers:
+  - name: file-context
+    command: "C:/dev/go-mcp-file-context-server/go-mcp-file-context-server.exe"
+    args:
+      - "-root-dir"
+      - "C:/dev/myproject"
+      - "-log-dir"
+      - "C:/logs/mcp"
+      - "-log-level"
+      - "access"
 ```
 
 ### CLI with All Options (`continue.yaml`)
@@ -259,19 +247,16 @@ models:
       - edit
       - autocomplete
 
-experimental:
-  modelContextProtocolServers:
-    - name: file-context
-      transport:
-        type: stdio
-        command: /usr/local/bin/go-mcp-file-context-server
-        args:
-          - "-root-dir"
-          - "/home/user/projects/myapp"
-          - "-log-dir"
-          - "/var/log/mcp"
-          - "-log-level"
-          - "access"
+mcpServers:
+  - name: file-context
+    command: /usr/local/bin/go-mcp-file-context-server
+    args:
+      - "-root-dir"
+      - "/home/user/projects/myapp"
+      - "-log-dir"
+      - "/var/log/mcp"
+      - "-log-level"
+      - "access"
 ```
 
 ---
@@ -298,7 +283,7 @@ experimental:
 
 ### Test MCP Tools
 
-Once connected, the following tools should be available:
+Once connected, the following tools should be available (in agent mode):
 - `list_context_files` - List files in a directory
 - `read_context` - Read file contents
 - `search_context` - Search for patterns in files
@@ -308,3 +293,32 @@ Once connected, the following tools should be available:
 - `get_chunk_count` - Get chunk count for large files
 - `getFiles` - Batch retrieve multiple files
 - `get_folder_structure` - Get directory tree structure
+
+---
+
+## Migration from Legacy Format
+
+If you have an older configuration using `experimental.modelContextProtocolServers`, migrate to the new `mcpServers` format:
+
+**Old format (deprecated):**
+```yaml
+experimental:
+  modelContextProtocolServers:
+    - name: file-context
+      transport:
+        type: stdio
+        command: /path/to/binary
+        args:
+          - "-arg1"
+          - "value1"
+```
+
+**New format:**
+```yaml
+mcpServers:
+  - name: file-context
+    command: /path/to/binary
+    args:
+      - "-arg1"
+      - "value1"
+```
