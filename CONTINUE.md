@@ -4,39 +4,95 @@ This guide covers integrating the go-mcp-file-context-server with Continue.dev f
 
 > **Important:** MCP tools can only be used in **agent mode** in Continue.dev.
 
-## Configuration Files Overview
+## Quick Start
 
-Continue.dev uses **different configuration files** depending on the client:
-
-| File | Location | Used By |
-|------|----------|---------|
-| `config.yaml` | `~/.continue/config.yaml` | **VS Code Extension** |
-| `continue.yaml` | `~/.continue/continue.yaml` | **`cn` CLI** |
-| `.continuerc.yaml` | Project root | Project-local overrides (both) |
-
-> **Important:** On Windows, `~` refers to `%USERPROFILE%` (e.g., `C:\Users\YourName`)
+Continue.dev supports multiple ways to configure MCP servers. Choose the method that best fits your workflow.
 
 ---
 
-## VS Code Extension Setup
+## Method 1: YAML Configuration (Recommended)
 
-### Step 1: Locate the Config File
+Create a YAML file in `.continue/mcpServers/` at your workspace root.
 
-**Windows:**
+### Example: `.continue/mcpServers/file-context.yaml`
+
+```yaml
+name: File Context Server
+version: 0.0.1
+schema: v1
+mcpServers:
+  - name: file-context
+    command: C:/dev/go-mcp-file-context-server/go-mcp-file-context-server.exe
+    args:
+      - "-root-dir"
+      - "C:/dev/myproject"
+      - "-log-level"
+      - "debug"
 ```
-C:\Users\YourName\.continue\config.yaml
+
+**macOS/Linux Example:**
+```yaml
+name: File Context Server
+version: 0.0.1
+schema: v1
+mcpServers:
+  - name: file-context
+    command: /usr/local/bin/go-mcp-file-context-server
+    args:
+      - "-root-dir"
+      - "/home/user/projects"
+      - "-log-level"
+      - "debug"
 ```
 
-**macOS/Linux:**
+---
+
+## Method 2: Transport Type Configuration
+
+Continue.dev supports three transport types for MCP servers:
+
+### Standard Input/Output (stdio) - Default
+
+```yaml
+name: File Context Server
+version: 0.0.1
+schema: v1
+mcpServers:
+  - name: file-context
+    type: stdio
+    command: C:/dev/go-mcp-file-context-server/go-mcp-file-context-server.exe
+    args:
+      - "-root-dir"
+      - "C:/dev"
 ```
-~/.continue/config.yaml
+
+### Server-Sent Events (SSE)
+
+```yaml
+mcpServers:
+  - name: remote-server
+    type: sse
+    url: https://your-mcp-server.example.com/sse
 ```
 
-### Step 2: Add MCP Server Configuration
+### Streamable HTTP
 
-Edit `config.yaml` and add the `mcpServers` section:
+```yaml
+mcpServers:
+  - name: http-server
+    type: streamable-http
+    url: https://your-mcp-server.example.com
+```
 
-**Windows Example:**
+---
+
+## Method 3: Global Configuration
+
+### VS Code Extension (`~/.continue/config.yaml`)
+
+**Windows:** `C:\Users\YourName\.continue\config.yaml`
+**macOS/Linux:** `~/.continue/config.yaml`
+
 ```yaml
 name: Local Config
 version: 1.0.0
@@ -46,7 +102,7 @@ models: []
 
 mcpServers:
   - name: file-context
-    command: "C:/dev/go-mcp-file-context-server/go-mcp-file-context-server.exe"
+    command: C:/dev/go-mcp-file-context-server/go-mcp-file-context-server.exe
     args:
       - "-root-dir"
       - "C:/dev"
@@ -54,105 +110,69 @@ mcpServers:
       - "debug"
 ```
 
-**macOS/Linux Example:**
+### CLI (`~/.continue/continue.yaml`)
+
+**Windows:** `C:\Users\YourName\.continue\continue.yaml`
+**macOS/Linux:** `~/.continue/continue.yaml`
+
 ```yaml
-name: Local Config
-version: 1.0.0
-schema: v1
-
-models: []
-
 mcpServers:
   - name: file-context
     command: /usr/local/bin/go-mcp-file-context-server
     args:
       - "-root-dir"
-      - "/home/username/projects"
+      - "/home/user/projects"
       - "-log-level"
       - "debug"
 ```
-
-> **Note:** On Windows, use forward slashes (`/`) in paths for YAML compatibility.
-
-### Step 3: Reload VS Code
-
-After editing the config, reload VS Code:
-
-1. Press `Ctrl+Shift+P` (Windows/Linux) or `Cmd+Shift+P` (macOS)
-2. Type "Developer: Reload Window" and press Enter
-
-### Troubleshooting VS Code Extension
-
-**Check Continue Output Panel:**
-1. Press `Ctrl+Shift+P` -> "Continue: Focus on Continue Output"
-2. Look for MCP-related errors or connection issues
-
-**Common Issues:**
-
-| Issue | Solution |
-|-------|----------|
-| MCP server not registering | Ensure you edited `config.yaml`, not `continue.yaml` |
-| MCP tools not available | MCP only works in **agent mode** |
-| Binary not found | Use absolute path to the executable |
-| Permission denied | Ensure binary is executable (`chmod +x` on macOS/Linux) |
-| Config syntax error | Validate YAML syntax (indentation matters) |
-| Path issues on Windows | Use forward slashes (`/`) instead of backslashes |
 
 ---
 
-## CLI (`cn`) Setup
+## Method 4: JSON Configuration
 
-### Step 1: Locate the Config File
+Continue.dev automatically recognizes JSON MCP configs from other tools.
 
-**Windows:**
+### `.continue/mcpServers/mcp.json`
+
+```json
+{
+  "mcpServers": {
+    "file-context": {
+      "command": "C:/dev/go-mcp-file-context-server/go-mcp-file-context-server.exe",
+      "args": ["-root-dir", "C:/dev", "-log-level", "debug"]
+    }
+  }
+}
 ```
-C:\Users\YourName\.continue\continue.yaml
-```
 
-**macOS/Linux:**
-```
-~/.continue/continue.yaml
-```
+---
 
-### Step 2: Add MCP Server Configuration
+## Environment Variables & Secrets
 
-Edit `continue.yaml` and add the `mcpServers` section:
+Pass API keys and credentials via environment variables:
 
-**Windows Example:**
 ```yaml
 mcpServers:
   - name: file-context
-    command: "C:/dev/go-mcp-file-context-server/go-mcp-file-context-server.exe"
+    command: /path/to/go-mcp-file-context-server
     args:
       - "-root-dir"
-      - "C:/dev"
-      - "-log-level"
-      - "debug"
-```
-
-**macOS/Linux Example:**
-```yaml
-mcpServers:
-  - name: file-context
-    command: /usr/local/bin/go-mcp-file-context-server
-    args:
-      - "-root-dir"
-      - "/home/username/projects"
-      - "-log-level"
-      - "debug"
+      - "${{ secrets.PROJECT_ROOT }}"
+    env:
+      PROJECT_ROOT: ${{ secrets.PROJECT_ROOT }}
+      MCP_LOG_LEVEL: debug
 ```
 
 ---
 
 ## Project-Local Configuration
 
-For project-specific settings, create a `.continuerc.yaml` file in your project root. This works with both VS Code and `cn` CLI.
+For project-specific settings, create a `.continuerc.yaml` file in your project root:
 
-**Example `.continuerc.yaml`:**
 ```yaml
 mcpServers:
   - name: file-context
-    command: ./go-mcp-file-context-server.exe  # Relative to project root
+    command: ./go-mcp-file-context-server.exe
     args:
       - "-root-dir"
       - "."
@@ -164,9 +184,36 @@ mcpServers:
 
 ---
 
-## Configuration Options
+## Available Tools
 
-### Available Command-Line Arguments
+Once connected, the following tools are available in agent mode:
+
+### Read Operations
+| Tool | Description |
+|------|-------------|
+| `list_context_files` | List files in a directory with metadata |
+| `read_context` | Read file or directory contents with caching |
+| `search_context` | Search for patterns in files with context |
+| `analyze_code` | Analyze code complexity and quality metrics |
+| `generate_outline` | Generate code outline (classes, functions, imports) |
+| `cache_stats` | View cache statistics and performance |
+| `get_chunk_count` | Get chunk count for large files |
+| `getFiles` | Batch retrieve multiple files |
+| `get_folder_structure` | Get directory tree structure |
+
+### Write Operations
+| Tool | Description |
+|------|-------------|
+| `write_file` | Create or overwrite a file with new content |
+| `create_directory` | Create a new directory (including parents) |
+| `copy_file` | Copy a file or directory |
+| `move_file` | Move or rename a file or directory |
+| `delete_file` | Delete a file or directory |
+| `modify_file` | Find and replace text (supports regex) |
+
+---
+
+## Command-Line Arguments
 
 | Argument | Description | Default |
 |----------|-------------|---------|
@@ -182,14 +229,12 @@ mcpServers:
 | `error` | Errors only |
 | `warn` | Warnings and errors |
 | `info` | General information (default) |
-| `access` | File access operations (includes bytes read/written) |
+| `access` | File access operations |
 | `debug` | Detailed debugging information |
 
 ---
 
 ## Log File Location
-
-If `-log-dir` is not specified, logs are written to:
 
 **Windows:**
 ```
@@ -203,96 +248,48 @@ C:\Users\YourName\go-mcp-file-context-server\logs\go-mcp-file-context-server-YYY
 
 ---
 
-## Full Configuration Examples
+## Verifying the Integration
 
-### VS Code Extension with All Options (`config.yaml`)
+### Check Server Logs
 
-```yaml
-name: Local Config
-version: 1.0.0
-schema: v1
-
-models:
-  - id: claude-3.5-sonnet
-    provider: anthropic
-    model: claude-3.5-sonnet
-    capabilities:
-      - chat
-      - edit
-
-mcpServers:
-  - name: file-context
-    command: "C:/dev/go-mcp-file-context-server/go-mcp-file-context-server.exe"
-    args:
-      - "-root-dir"
-      - "C:/dev/myproject"
-      - "-log-dir"
-      - "C:/logs/mcp"
-      - "-log-level"
-      - "access"
+The startup log should show:
+```
+[INFO] ========================================
+[INFO] SERVER STARTUP
+[INFO] ========================================
+[INFO] Application: go-mcp-file-context-server
+[INFO] Version: 1.0.0
+...
+[INFO] CONFIGURATION (value [source])
+[INFO] ----------------------------------------
+[INFO] Log Directory: /path/to/logs [default]
+[INFO] Log Level: debug [flag]
+[INFO] Root Directory: /path/to/root [flag]
 ```
 
-### CLI with All Options (`continue.yaml`)
+### Reload VS Code
 
-```yaml
-version: 2
+After editing configuration:
+1. Press `Ctrl+Shift+P` (Windows/Linux) or `Cmd+Shift+P` (macOS)
+2. Type "Developer: Reload Window" and press Enter
 
-models:
-  - id: gpt-4
-    provider: openai
-    model: gpt-4
-    default: true
-    capabilities:
-      - chat
-      - edit
-      - autocomplete
+### Check Continue Output
 
-mcpServers:
-  - name: file-context
-    command: /usr/local/bin/go-mcp-file-context-server
-    args:
-      - "-root-dir"
-      - "/home/user/projects/myapp"
-      - "-log-dir"
-      - "/var/log/mcp"
-      - "-log-level"
-      - "access"
-```
+1. Press `Ctrl+Shift+P` → "Continue: Focus on Continue Output"
+2. Look for MCP-related connection messages
 
 ---
 
-## Verifying the Integration
+## Troubleshooting
 
-### Check if MCP Server is Running
-
-1. Look for log files in the log directory
-2. The startup log should show:
-   ```
-   [INFO] ========================================
-   [INFO] SERVER STARTUP
-   [INFO] ========================================
-   [INFO] Application: go-mcp-file-context-server
-   [INFO] Version: 1.0.0
-   ...
-   [INFO] CONFIGURATION (value [source])
-   [INFO] ----------------------------------------
-   [INFO] Log Directory: /path/to/logs [default]
-   [INFO] Log Level: debug [flag]
-   [INFO] Root Directory: /path/to/root [flag]
-   ```
-
-### Test MCP Tools
-
-Once connected, the following tools should be available (in agent mode):
-- `list_context_files` - List files in a directory
-- `read_context` - Read file contents
-- `search_context` - Search for patterns in files
-- `analyze_code` - Analyze code complexity and quality
-- `generate_outline` - Generate code outline
-- `cache_stats` - View cache statistics
-- `get_chunk_count` - Get chunk count for large files
-- `getFiles` - Batch retrieve multiple files
-- `get_folder_structure` - Get directory tree structure
+| Issue | Solution |
+|-------|----------|
+| MCP server not registering | Ensure correct config file for your client (VS Code vs CLI) |
+| MCP tools not available | MCP only works in **agent mode** |
+| Binary not found | Use absolute path to the executable |
+| Permission denied | Ensure binary is executable (`chmod +x` on macOS/Linux) |
+| Config syntax error | Validate YAML syntax (indentation matters) |
+| Path issues on Windows | Use forward slashes (`/`) in YAML paths |
 
 ---
 

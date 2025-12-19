@@ -4,13 +4,21 @@ A Go port of the [MCP File Context Server](https://github.com/bsmi021/mcp-file-c
 
 ## Features
 
-- **File Operations**
+- **File Read Operations**
   - Read file and directory contents with metadata
   - List files with detailed metadata
-  - Real-time file watching and cache invalidation
   - Recursive directory traversal
   - File type filtering
   - Batch file retrieval
+  - Folder structure tree generation
+
+- **File Write Operations**
+  - Create new files or overwrite existing files
+  - Create directories (including nested paths)
+  - Copy files and directories
+  - Move/rename files and directories
+  - Delete files and directories
+  - Find and replace text (with regex support)
 
 - **Code Analysis**
   - Cyclomatic complexity calculation
@@ -282,111 +290,94 @@ For local workspace configuration with Claude Code CLI, add a `.claude/mcp.json`
 
 ### Continue.dev
 
-Add to your Continue configuration file:
+> **Note:** MCP tools can only be used in **agent mode** in Continue.dev. See [CONTINUE.md](CONTINUE.md) for detailed integration guide.
 
-**Location:** `~/.continue/config.yaml` (macOS/Linux) or `%USERPROFILE%\.continue\config.yaml` (Windows)
+Add a YAML file in `.continue/mcpServers/` at your workspace root:
 
-**Basic setup (restrict to project directory):**
-
-```yaml
-experimental:
-  modelContextProtocolServers:
-    - transport:
-        type: stdio
-        command: /path/to/go-mcp-file-context-server
-        args:
-          - "-root-dir"
-          - "/home/username/projects/myproject"
-          - "-log-level"
-          - "access"
-```
-
-**With custom log directory:**
+**Example: `.continue/mcpServers/file-context.yaml`**
 
 ```yaml
-experimental:
-  modelContextProtocolServers:
-    - transport:
-        type: stdio
-        command: /path/to/go-mcp-file-context-server
-        args:
-          - "-root-dir"
-          - "/home/username/projects/myproject"
-          - "-log-dir"
-          - "/var/log/mcp"
-          - "-log-level"
-          - "debug"
+name: File Context Server
+version: 0.0.1
+schema: v1
+mcpServers:
+  - name: file-context
+    command: /path/to/go-mcp-file-context-server
+    args:
+      - "-root-dir"
+      - "/home/username/projects/myproject"
+      - "-log-level"
+      - "access"
 ```
 
 **Windows example:**
 
 ```yaml
-experimental:
-  modelContextProtocolServers:
-    - transport:
-        type: stdio
-        command: C:\path\to\go-mcp-file-context-server-windows-amd64.exe
-        args:
-          - "-root-dir"
-          - "C:\\Users\\username\\projects\\myproject"
-          - "-log-level"
-          - "info"
+name: File Context Server
+version: 0.0.1
+schema: v1
+mcpServers:
+  - name: file-context
+    command: C:/path/to/go-mcp-file-context-server.exe
+    args:
+      - "-root-dir"
+      - "C:/Users/username/projects/myproject"
+      - "-log-level"
+      - "info"
 ```
 
-**Full filesystem access (no restriction):**
+### Global Configuration
+
+**VS Code Extension:** `~/.continue/config.yaml`
 
 ```yaml
-experimental:
-  modelContextProtocolServers:
-    - transport:
-        type: stdio
-        command: /path/to/go-mcp-file-context-server
-        args:
-          - "-log-level"
-          - "access"
+name: Local Config
+version: 1.0.0
+schema: v1
+
+models: []
+
+mcpServers:
+  - name: file-context
+    command: /path/to/go-mcp-file-context-server
+    args:
+      - "-root-dir"
+      - "/home/username/projects"
+      - "-log-level"
+      - "debug"
 ```
 
-### Continue.dev Local Workspace Configuration
-
-For local workspace configuration with Continue CLI (`cn`), add a `.continuerc.yaml` file to your project root:
-
-**Windows example:**
+**CLI:** `~/.continue/continue.yaml`
 
 ```yaml
-experimental:
-  modelContextProtocolServers:
-    - name: file-context
-      transport:
-        type: stdio
-        command: ./go-mcp-file-context-server.exe
-        args:
-          - "-root-dir"
-          - "."
-          - "-log-dir"
-          - "./logs"
-          - "-log-level"
-          - "debug"
+mcpServers:
+  - name: file-context
+    command: /path/to/go-mcp-file-context-server
+    args:
+      - "-root-dir"
+      - "/home/username/projects"
+      - "-log-level"
+      - "debug"
 ```
 
-**macOS/Linux example:**
+### Project-Local Configuration
+
+Add a `.continuerc.yaml` file to your project root:
 
 ```yaml
-experimental:
-  modelContextProtocolServers:
-    - name: file-context
-      transport:
-        type: stdio
-        command: ./go-mcp-file-context-server
-        args:
-          - "-root-dir"
-          - "."
-          - "-log-dir"
-          - "./logs"
-          - "-log-level"
-          - "debug"
+mcpServers:
+  - name: file-context
+    command: ./go-mcp-file-context-server
+    args:
+      - "-root-dir"
+      - "."
+      - "-log-dir"
+      - "./logs"
+      - "-log-level"
+      - "debug"
 ```
 
-**Note:** Using `-root-dir "."` restricts access to the current working directory, which is typically the project root when launched from Continue.dev.
+**Note:** Using `-root-dir "."` restricts access to the current working directory.
 
 ## Available Tools
 
@@ -488,6 +479,82 @@ Returns a tree representation of the folder structure.
 {
   "path": "./src",
   "maxDepth": 5
+}
+```
+
+### write_file
+Create a new file or overwrite an existing file with content.
+
+```json
+{
+  "path": "./src/newfile.go",
+  "content": "package main\n\nfunc main() {}\n"
+}
+```
+
+### create_directory
+Create a new directory (including parent directories if needed).
+
+```json
+{
+  "path": "./src/components/new-feature"
+}
+```
+
+### copy_file
+Copy a file or directory from source to destination.
+
+```json
+{
+  "source": "./src/template.go",
+  "destination": "./src/newfile.go"
+}
+```
+
+### move_file
+Move or rename a file or directory.
+
+```json
+{
+  "source": "./src/oldname.go",
+  "destination": "./src/newname.go"
+}
+```
+
+### delete_file
+Delete a file or directory from the file system.
+
+```json
+{
+  "path": "./src/deprecated.go",
+  "recursive": false
+}
+```
+
+For directories with contents, set `recursive: true`.
+
+### modify_file
+Find and replace text in a file. Supports regex patterns.
+
+```json
+{
+  "path": "./src/main.go",
+  "find": "oldFunction",
+  "replace": "newFunction",
+  "all_occurrences": true,
+  "regex": false
+}
+```
+
+With regex:
+
+```json
+{
+  "path": "./src/main.go",
+  "find": "func (\\w+)\\(\\)",
+  "replace": "function $1()",
+  "all_occurrences": true,
+  "regex": true
 }
 ```
 

@@ -3,6 +3,7 @@ package files
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"mime"
 	"os"
 	"path/filepath"
@@ -59,15 +60,51 @@ type SearchResult struct {
 	Total   int           `json:"total"`
 }
 
+// WriteResult represents the result of a write operation
+type WriteResult struct {
+	Path         string `json:"path"`
+	BytesWritten int64  `json:"bytesWritten"`
+	Created      bool   `json:"created"` // true if file was created, false if overwritten
+}
+
+// CopyResult represents the result of a copy operation
+type CopyResult struct {
+	Source      string `json:"source"`
+	Destination string `json:"destination"`
+	BytesCopied int64  `json:"bytesCopied"`
+	IsDirectory bool   `json:"isDirectory"`
+}
+
+// MoveResult represents the result of a move operation
+type MoveResult struct {
+	Source      string `json:"source"`
+	Destination string `json:"destination"`
+}
+
+// DeleteResult represents the result of a delete operation
+type DeleteResult struct {
+	Path        string `json:"path"`
+	IsDirectory bool   `json:"isDirectory"`
+}
+
+// ModifyResult represents the result of a modify operation
+type ModifyResult struct {
+	Path         string `json:"path"`
+	Replacements int    `json:"replacements"`
+	Modified     bool   `json:"modified"`
+}
+
 // ErrorCode represents file operation error codes
 type ErrorCode string
 
 const (
-	ErrInvalidPath  ErrorCode = "INVALID_PATH"
-	ErrFileNotFound ErrorCode = "FILE_NOT_FOUND"
-	ErrFileTooLarge ErrorCode = "FILE_TOO_LARGE"
-	ErrPermission   ErrorCode = "PERMISSION_DENIED"
-	ErrUnknown      ErrorCode = "UNKNOWN_ERROR"
+	ErrInvalidPath   ErrorCode = "INVALID_PATH"
+	ErrFileNotFound  ErrorCode = "FILE_NOT_FOUND"
+	ErrFileTooLarge  ErrorCode = "FILE_TOO_LARGE"
+	ErrPermission    ErrorCode = "PERMISSION_DENIED"
+	ErrAlreadyExists ErrorCode = "ALREADY_EXISTS"
+	ErrNotEmpty      ErrorCode = "NOT_EMPTY"
+	ErrUnknown       ErrorCode = "UNKNOWN_ERROR"
 )
 
 // FileError represents a file operation error
@@ -465,4 +502,330 @@ func ReadDirectory(dirPath string, recursive bool, fileTypes []string, maxSize i
 	}
 
 	return contents, nil
+}
+
+// WriteFile creates a new file or overwrites an existing file with content
+func WriteFile(path string, content string) (*WriteResult, error) {
+	// Check if file exists to determine if we're creating or overwriting
+	_, err := os.Stat(path)
+	created := os.IsNotExist(err)
+
+	// Ensure parent directory exists
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return nil, &FileError{Code: ErrPermission, Message: fmt.Sprintf("Failed to create parent directory: %s", err.Error()), Path: path}
+	}
+
+	// Write the file
+	data := []byte(content)
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		if os.IsPermission(err) {
+			return nil, &FileError{Code: ErrPermission, Message: "Permission denied", Path: path}
+		}
+		return nil, &FileError{Code: ErrUnknown, Message: err.Error(), Path: path}
+	}
+
+	return &WriteResult{
+		Path:         path,
+		BytesWritten: int64(len(data)),
+		Created:      created,
+	}, nil
+}
+
+// CreateDirectory creates a new directory (including parent directories if needed)
+func CreateDirectory(path string) error {
+	// Check if already exists
+	info, err := os.Stat(path)
+	if err == nil {
+		if info.IsDir() {
+			// Directory already exists, this is fine
+			return nil
+		}
+		return &FileError{Code: ErrAlreadyExists, Message: "Path exists but is not a directory", Path: path}
+	}
+
+	// Create the directory
+	if err := os.MkdirAll(path, 0755); err != nil {
+		if os.IsPermission(err) {
+			return &FileError{Code: ErrPermission, Message: "Permission denied", Path: path}
+		}
+		return &FileError{Code: ErrUnknown, Message: err.Error(), Path: path}
+	}
+
+	return nil
+}
+
+// CopyFile copies a file or directory from source to destination
+func CopyFile(source, destination string) (*CopyResult, error) {
+	srcInfo, err := os.Stat(source)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, &FileError{Code: ErrFileNotFound, Message: "Source not found", Path: source}
+		}
+		return nil, &FileError{Code: ErrUnknown, Message: err.Error(), Path: source}
+	}
+
+	if srcInfo.IsDir() {
+		return copyDirectory(source, destination)
+	}
+
+	return copyFileOnly(source, destination)
+}
+
+func copyFileOnly(source, destination string) (*CopyResult, error) {
+	srcFile, err := os.Open(source)
+	if err != nil {
+		if os.IsPermission(err) {
+			return nil, &FileError{Code: ErrPermission, Message: "Permission denied reading source", Path: source}
+		}
+		return nil, &FileError{Code: ErrUnknown, Message: err.Error(), Path: source}
+	}
+	defer srcFile.Close()
+
+	// Ensure destination directory exists
+	destDir := filepath.Dir(destination)
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return nil, &FileError{Code: ErrPermission, Message: fmt.Sprintf("Failed to create destination directory: %s", err.Error()), Path: destination}
+	}
+
+	dstFile, err := os.Create(destination)
+	if err != nil {
+		if os.IsPermission(err) {
+			return nil, &FileError{Code: ErrPermission, Message: "Permission denied writing destination", Path: destination}
+		}
+		return nil, &FileError{Code: ErrUnknown, Message: err.Error(), Path: destination}
+	}
+	defer dstFile.Close()
+
+	bytesCopied, err := io.Copy(dstFile, srcFile)
+	if err != nil {
+		return nil, &FileError{Code: ErrUnknown, Message: err.Error(), Path: destination}
+	}
+
+	// Copy file permissions
+	srcInfo, _ := os.Stat(source)
+	os.Chmod(destination, srcInfo.Mode())
+
+	return &CopyResult{
+		Source:      source,
+		Destination: destination,
+		BytesCopied: bytesCopied,
+		IsDirectory: false,
+	}, nil
+}
+
+func copyDirectory(source, destination string) (*CopyResult, error) {
+	var totalBytes int64
+
+	err := filepath.WalkDir(source, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Calculate relative path
+		relPath, err := filepath.Rel(source, path)
+		if err != nil {
+			return err
+		}
+
+		destPath := filepath.Join(destination, relPath)
+
+		if d.IsDir() {
+			return os.MkdirAll(destPath, 0755)
+		}
+
+		// Copy file
+		result, err := copyFileOnly(path, destPath)
+		if err != nil {
+			return err
+		}
+		totalBytes += result.BytesCopied
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, &FileError{Code: ErrUnknown, Message: err.Error(), Path: source}
+	}
+
+	return &CopyResult{
+		Source:      source,
+		Destination: destination,
+		BytesCopied: totalBytes,
+		IsDirectory: true,
+	}, nil
+}
+
+// MoveFile moves or renames a file or directory
+func MoveFile(source, destination string) (*MoveResult, error) {
+	// Check source exists
+	_, err := os.Stat(source)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, &FileError{Code: ErrFileNotFound, Message: "Source not found", Path: source}
+		}
+		return nil, &FileError{Code: ErrUnknown, Message: err.Error(), Path: source}
+	}
+
+	// Ensure destination directory exists
+	destDir := filepath.Dir(destination)
+	if err := os.MkdirAll(destDir, 0755); err != nil {
+		return nil, &FileError{Code: ErrPermission, Message: fmt.Sprintf("Failed to create destination directory: %s", err.Error()), Path: destination}
+	}
+
+	// Try atomic rename first (works if source and dest are on same filesystem)
+	if err := os.Rename(source, destination); err != nil {
+		// If rename fails (e.g., cross-device), try copy+delete
+		srcInfo, _ := os.Stat(source)
+		if srcInfo.IsDir() {
+			_, copyErr := copyDirectory(source, destination)
+			if copyErr != nil {
+				return nil, copyErr
+			}
+		} else {
+			_, copyErr := copyFileOnly(source, destination)
+			if copyErr != nil {
+				return nil, copyErr
+			}
+		}
+
+		// Delete source after successful copy
+		if err := os.RemoveAll(source); err != nil {
+			return nil, &FileError{Code: ErrUnknown, Message: fmt.Sprintf("Copied but failed to delete source: %s", err.Error()), Path: source}
+		}
+	}
+
+	return &MoveResult{
+		Source:      source,
+		Destination: destination,
+	}, nil
+}
+
+// DeleteFile deletes a file or directory
+func DeleteFile(path string, recursive bool) (*DeleteResult, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, &FileError{Code: ErrFileNotFound, Message: "Path not found", Path: path}
+		}
+		return nil, &FileError{Code: ErrUnknown, Message: err.Error(), Path: path}
+	}
+
+	isDir := info.IsDir()
+
+	if isDir && !recursive {
+		// Check if directory is empty
+		entries, err := os.ReadDir(path)
+		if err != nil {
+			return nil, &FileError{Code: ErrUnknown, Message: err.Error(), Path: path}
+		}
+		if len(entries) > 0 {
+			return nil, &FileError{Code: ErrNotEmpty, Message: "Directory is not empty. Use recursive=true to delete non-empty directories", Path: path}
+		}
+		// Remove empty directory
+		if err := os.Remove(path); err != nil {
+			if os.IsPermission(err) {
+				return nil, &FileError{Code: ErrPermission, Message: "Permission denied", Path: path}
+			}
+			return nil, &FileError{Code: ErrUnknown, Message: err.Error(), Path: path}
+		}
+	} else if isDir && recursive {
+		// Remove directory recursively
+		if err := os.RemoveAll(path); err != nil {
+			if os.IsPermission(err) {
+				return nil, &FileError{Code: ErrPermission, Message: "Permission denied", Path: path}
+			}
+			return nil, &FileError{Code: ErrUnknown, Message: err.Error(), Path: path}
+		}
+	} else {
+		// Remove file
+		if err := os.Remove(path); err != nil {
+			if os.IsPermission(err) {
+				return nil, &FileError{Code: ErrPermission, Message: "Permission denied", Path: path}
+			}
+			return nil, &FileError{Code: ErrUnknown, Message: err.Error(), Path: path}
+		}
+	}
+
+	return &DeleteResult{
+		Path:        path,
+		IsDirectory: isDir,
+	}, nil
+}
+
+// ModifyFile performs find and replace operations on a file
+func ModifyFile(path string, find string, replace string, allOccurrences bool, useRegex bool) (*ModifyResult, error) {
+	// Read the file
+	content, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, &FileError{Code: ErrFileNotFound, Message: "File not found", Path: path}
+		}
+		if os.IsPermission(err) {
+			return nil, &FileError{Code: ErrPermission, Message: "Permission denied", Path: path}
+		}
+		return nil, &FileError{Code: ErrUnknown, Message: err.Error(), Path: path}
+	}
+
+	originalContent := string(content)
+	var newContent string
+	var replacements int
+
+	if useRegex {
+		re, err := regexp.Compile(find)
+		if err != nil {
+			return nil, &FileError{Code: ErrInvalidPath, Message: fmt.Sprintf("Invalid regex pattern: %s", err.Error()), Path: path}
+		}
+
+		if allOccurrences {
+			matches := re.FindAllStringIndex(originalContent, -1)
+			replacements = len(matches)
+			newContent = re.ReplaceAllString(originalContent, replace)
+		} else {
+			if re.MatchString(originalContent) {
+				replacements = 1
+				newContent = re.ReplaceAllStringFunc(originalContent, func(match string) string {
+					if replacements == 1 {
+						replacements = 0 // Mark as replaced
+						return re.ReplaceAllString(match, replace)
+					}
+					return match
+				})
+				replacements = 1 // Reset to correct count
+			} else {
+				newContent = originalContent
+				replacements = 0
+			}
+		}
+	} else {
+		if allOccurrences {
+			replacements = strings.Count(originalContent, find)
+			newContent = strings.ReplaceAll(originalContent, find, replace)
+		} else {
+			if strings.Contains(originalContent, find) {
+				replacements = 1
+				newContent = strings.Replace(originalContent, find, replace, 1)
+			} else {
+				newContent = originalContent
+				replacements = 0
+			}
+		}
+	}
+
+	modified := newContent != originalContent
+
+	if modified {
+		if err := os.WriteFile(path, []byte(newContent), 0644); err != nil {
+			if os.IsPermission(err) {
+				return nil, &FileError{Code: ErrPermission, Message: "Permission denied", Path: path}
+			}
+			return nil, &FileError{Code: ErrUnknown, Message: err.Error(), Path: path}
+		}
+	}
+
+	return &ModifyResult{
+		Path:         path,
+		Replacements: replacements,
+		Modified:     modified,
+	}, nil
 }

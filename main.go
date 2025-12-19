@@ -472,6 +472,137 @@ func registerTools(server *mcp.Server) {
 			Required: []string{"path"},
 		},
 	}, handleGetFolderStructure)
+
+	// write_file tool
+	server.RegisterTool(mcp.Tool{
+		Name:        "write_file",
+		Description: "Create a new file or overwrite an existing file with new content. Creates parent directories if they don't exist.",
+		InputSchema: mcp.JSONSchema{
+			Type: "object",
+			Properties: map[string]mcp.Property{
+				"path": {
+					Type:        "string",
+					Description: "Path to the file to write",
+				},
+				"content": {
+					Type:        "string",
+					Description: "Content to write to the file",
+				},
+			},
+			Required: []string{"path", "content"},
+		},
+	}, handleWriteFile)
+
+	// create_directory tool
+	server.RegisterTool(mcp.Tool{
+		Name:        "create_directory",
+		Description: "Create a new directory or ensure a directory exists. Creates parent directories if needed.",
+		InputSchema: mcp.JSONSchema{
+			Type: "object",
+			Properties: map[string]mcp.Property{
+				"path": {
+					Type:        "string",
+					Description: "Path to the directory to create",
+				},
+			},
+			Required: []string{"path"},
+		},
+	}, handleCreateDirectory)
+
+	// copy_file tool
+	server.RegisterTool(mcp.Tool{
+		Name:        "copy_file",
+		Description: "Copy a file or directory from source to destination. Supports recursive copying for directories.",
+		InputSchema: mcp.JSONSchema{
+			Type: "object",
+			Properties: map[string]mcp.Property{
+				"source": {
+					Type:        "string",
+					Description: "Source file or directory path",
+				},
+				"destination": {
+					Type:        "string",
+					Description: "Destination path",
+				},
+			},
+			Required: []string{"source", "destination"},
+		},
+	}, handleCopyFile)
+
+	// move_file tool
+	server.RegisterTool(mcp.Tool{
+		Name:        "move_file",
+		Description: "Move or rename a file or directory from source to destination.",
+		InputSchema: mcp.JSONSchema{
+			Type: "object",
+			Properties: map[string]mcp.Property{
+				"source": {
+					Type:        "string",
+					Description: "Source file or directory path",
+				},
+				"destination": {
+					Type:        "string",
+					Description: "Destination path",
+				},
+			},
+			Required: []string{"source", "destination"},
+		},
+	}, handleMoveFile)
+
+	// delete_file tool
+	server.RegisterTool(mcp.Tool{
+		Name:        "delete_file",
+		Description: "Delete a file or directory from the file system.",
+		InputSchema: mcp.JSONSchema{
+			Type: "object",
+			Properties: map[string]mcp.Property{
+				"path": {
+					Type:        "string",
+					Description: "Path to the file or directory to delete",
+				},
+				"recursive": {
+					Type:        "boolean",
+					Description: "If true, delete directories recursively (required for non-empty directories)",
+					Default:     false,
+				},
+			},
+			Required: []string{"path"},
+		},
+	}, handleDeleteFile)
+
+	// modify_file tool
+	server.RegisterTool(mcp.Tool{
+		Name:        "modify_file",
+		Description: "Find and replace text in a file. Supports both literal string matching and regular expressions.",
+		InputSchema: mcp.JSONSchema{
+			Type: "object",
+			Properties: map[string]mcp.Property{
+				"path": {
+					Type:        "string",
+					Description: "Path to the file to modify",
+				},
+				"find": {
+					Type:        "string",
+					Description: "Text or regex pattern to find",
+				},
+				"replace": {
+					Type:        "string",
+					Description: "Replacement text",
+				},
+				"all_occurrences": {
+					Type:        "boolean",
+					Description: "If true, replace all occurrences; otherwise replace only the first",
+					Default:     true,
+				},
+				"regex": {
+					Type:        "boolean",
+					Description: "If true, treat 'find' as a regular expression",
+					Default:     false,
+				},
+			},
+			Required: []string{"path", "find", "replace"},
+		},
+	}, handleModifyFile)
 }
 
 func handleListContextFiles(args map[string]interface{}) (*mcp.CallToolResult, error) {
@@ -900,4 +1031,184 @@ func getStringArray(args map[string]interface{}, key string) []string {
 		return result
 	}
 	return nil
+}
+
+func getString(args map[string]interface{}, key string, defaultVal string) string {
+	if val, ok := args[key].(string); ok {
+		return val
+	}
+	return defaultVal
+}
+
+func handleWriteFile(args map[string]interface{}) (*mcp.CallToolResult, error) {
+	logger.ToolCall("write_file", args)
+
+	path, _ := args["path"].(string)
+	content, _ := args["content"].(string)
+
+	absPath, err := validatePath(path)
+	if err != nil {
+		logger.Error("write_file: %v", err)
+		return errorResult(err.Error())
+	}
+
+	result, err := files.WriteFile(absPath, content)
+	if err != nil {
+		logger.Error("write_file: failed to write file %q: %v", absPath, err)
+		return errorResult(err.Error())
+	}
+
+	action := "overwrote"
+	if result.Created {
+		action = "created"
+	}
+	logger.Info("write_file: %s file %q (%d bytes)", action, absPath, result.BytesWritten)
+
+	data, _ := json.MarshalIndent(result, "", "  ")
+	return textResult(string(data))
+}
+
+func handleCreateDirectory(args map[string]interface{}) (*mcp.CallToolResult, error) {
+	logger.ToolCall("create_directory", args)
+
+	path, _ := args["path"].(string)
+
+	absPath, err := validatePath(path)
+	if err != nil {
+		logger.Error("create_directory: %v", err)
+		return errorResult(err.Error())
+	}
+
+	if err := files.CreateDirectory(absPath); err != nil {
+		logger.Error("create_directory: failed to create directory %q: %v", absPath, err)
+		return errorResult(err.Error())
+	}
+
+	logger.Info("create_directory: created directory %q", absPath)
+
+	result := map[string]interface{}{
+		"path":    absPath,
+		"created": true,
+	}
+	data, _ := json.MarshalIndent(result, "", "  ")
+	return textResult(string(data))
+}
+
+func handleCopyFile(args map[string]interface{}) (*mcp.CallToolResult, error) {
+	logger.ToolCall("copy_file", args)
+
+	source, _ := args["source"].(string)
+	destination, _ := args["destination"].(string)
+
+	absSrc, err := validatePath(source)
+	if err != nil {
+		logger.Error("copy_file: source %v", err)
+		return errorResult(err.Error())
+	}
+
+	absDst, err := validatePath(destination)
+	if err != nil {
+		logger.Error("copy_file: destination %v", err)
+		return errorResult(err.Error())
+	}
+
+	result, err := files.CopyFile(absSrc, absDst)
+	if err != nil {
+		logger.Error("copy_file: failed to copy %q to %q: %v", absSrc, absDst, err)
+		return errorResult(err.Error())
+	}
+
+	logger.Info("copy_file: copied %q to %q (%d bytes)", absSrc, absDst, result.BytesCopied)
+
+	data, _ := json.MarshalIndent(result, "", "  ")
+	return textResult(string(data))
+}
+
+func handleMoveFile(args map[string]interface{}) (*mcp.CallToolResult, error) {
+	logger.ToolCall("move_file", args)
+
+	source, _ := args["source"].(string)
+	destination, _ := args["destination"].(string)
+
+	absSrc, err := validatePath(source)
+	if err != nil {
+		logger.Error("move_file: source %v", err)
+		return errorResult(err.Error())
+	}
+
+	absDst, err := validatePath(destination)
+	if err != nil {
+		logger.Error("move_file: destination %v", err)
+		return errorResult(err.Error())
+	}
+
+	result, err := files.MoveFile(absSrc, absDst)
+	if err != nil {
+		logger.Error("move_file: failed to move %q to %q: %v", absSrc, absDst, err)
+		return errorResult(err.Error())
+	}
+
+	logger.Info("move_file: moved %q to %q", absSrc, absDst)
+
+	data, _ := json.MarshalIndent(result, "", "  ")
+	return textResult(string(data))
+}
+
+func handleDeleteFile(args map[string]interface{}) (*mcp.CallToolResult, error) {
+	logger.ToolCall("delete_file", args)
+
+	path, _ := args["path"].(string)
+	recursive := getBool(args, "recursive", false)
+
+	absPath, err := validatePath(path)
+	if err != nil {
+		logger.Error("delete_file: %v", err)
+		return errorResult(err.Error())
+	}
+
+	result, err := files.DeleteFile(absPath, recursive)
+	if err != nil {
+		logger.Error("delete_file: failed to delete %q: %v", absPath, err)
+		return errorResult(err.Error())
+	}
+
+	itemType := "file"
+	if result.IsDirectory {
+		itemType = "directory"
+	}
+	logger.Info("delete_file: deleted %s %q", itemType, absPath)
+
+	data, _ := json.MarshalIndent(result, "", "  ")
+	return textResult(string(data))
+}
+
+func handleModifyFile(args map[string]interface{}) (*mcp.CallToolResult, error) {
+	logger.ToolCall("modify_file", args)
+
+	path, _ := args["path"].(string)
+	find, _ := args["find"].(string)
+	replace := getString(args, "replace", "")
+	allOccurrences := getBool(args, "all_occurrences", true)
+	useRegex := getBool(args, "regex", false)
+
+	absPath, err := validatePath(path)
+	if err != nil {
+		logger.Error("modify_file: %v", err)
+		return errorResult(err.Error())
+	}
+
+	result, err := files.ModifyFile(absPath, find, replace, allOccurrences, useRegex)
+	if err != nil {
+		logger.Error("modify_file: failed to modify %q: %v", absPath, err)
+		return errorResult(err.Error())
+	}
+
+	if result.Modified {
+		logger.Info("modify_file: modified %q (%d replacements)", absPath, result.Replacements)
+	} else {
+		logger.Info("modify_file: no changes made to %q", absPath)
+	}
+
+	data, _ := json.MarshalIndent(result, "", "  ")
+	return textResult(string(data))
 }
