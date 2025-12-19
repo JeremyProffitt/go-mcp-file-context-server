@@ -4,55 +4,15 @@ This guide covers integrating the go-mcp-file-context-server with Continue.dev f
 
 > **Important:** MCP tools can only be used in **agent mode** in Continue.dev.
 
-## Quick Start
-
-Continue.dev supports multiple ways to configure MCP servers. Choose the method that best fits your workflow.
-
 ---
 
-## Method 1: YAML Configuration (Recommended)
+## YAML Configuration
 
 Create a YAML file in `.continue/mcpServers/` at your workspace root.
 
 ### Example: `.continue/mcpServers/file-context.yaml`
 
-```yaml
-name: File Context Server
-version: 0.0.1
-schema: v1
-mcpServers:
-  - name: file-context
-    command: C:/dev/go-mcp-file-context-server/go-mcp-file-context-server.exe
-    args:
-      - "-root-dir"
-      - "C:/dev/myproject"
-      - "-log-level"
-      - "debug"
-```
-
-**macOS/Linux Example:**
-```yaml
-name: File Context Server
-version: 0.0.1
-schema: v1
-mcpServers:
-  - name: file-context
-    command: /usr/local/bin/go-mcp-file-context-server
-    args:
-      - "-root-dir"
-      - "/home/user/projects"
-      - "-log-level"
-      - "debug"
-```
-
----
-
-## Method 2: Transport Type Configuration
-
-Continue.dev supports three transport types for MCP servers:
-
-### Standard Input/Output (stdio) - Default
-
+**Windows:**
 ```yaml
 name: File Context Server
 version: 0.0.1
@@ -63,61 +23,19 @@ mcpServers:
     command: C:/dev/go-mcp-file-context-server/go-mcp-file-context-server.exe
     args:
       - "-root-dir"
-      - "C:/dev"
-```
-
-### Server-Sent Events (SSE)
-
-```yaml
-mcpServers:
-  - name: remote-server
-    type: sse
-    url: https://your-mcp-server.example.com/sse
-```
-
-### Streamable HTTP
-
-```yaml
-mcpServers:
-  - name: http-server
-    type: streamable-http
-    url: https://your-mcp-server.example.com
-```
-
----
-
-## Method 3: Global Configuration
-
-### VS Code Extension (`~/.continue/config.yaml`)
-
-**Windows:** `C:\Users\YourName\.continue\config.yaml`
-**macOS/Linux:** `~/.continue/config.yaml`
-
-```yaml
-name: Local Config
-version: 1.0.0
-schema: v1
-
-models: []
-
-mcpServers:
-  - name: file-context
-    command: C:/dev/go-mcp-file-context-server/go-mcp-file-context-server.exe
-    args:
-      - "-root-dir"
-      - "C:/dev"
+      - "C:/dev/myproject"
       - "-log-level"
       - "debug"
 ```
 
-### CLI (`~/.continue/continue.yaml`)
-
-**Windows:** `C:\Users\YourName\.continue\continue.yaml`
-**macOS/Linux:** `~/.continue/continue.yaml`
-
+**macOS/Linux:**
 ```yaml
+name: File Context Server
+version: 0.0.1
+schema: v1
 mcpServers:
   - name: file-context
+    type: stdio
     command: /usr/local/bin/go-mcp-file-context-server
     args:
       - "-root-dir"
@@ -128,12 +46,13 @@ mcpServers:
 
 ---
 
-## Method 4: JSON Configuration
+## JSON Configuration
 
 Continue.dev automatically recognizes JSON MCP configs from other tools.
 
-### `.continue/mcpServers/mcp.json`
+### Example: `.continue/mcpServers/mcp.json`
 
+**Windows:**
 ```json
 {
   "mcpServers": {
@@ -145,41 +64,16 @@ Continue.dev automatically recognizes JSON MCP configs from other tools.
 }
 ```
 
----
-
-## Environment Variables & Secrets
-
-Pass API keys and credentials via environment variables:
-
-```yaml
-mcpServers:
-  - name: file-context
-    command: /path/to/go-mcp-file-context-server
-    args:
-      - "-root-dir"
-      - "${{ secrets.PROJECT_ROOT }}"
-    env:
-      PROJECT_ROOT: ${{ secrets.PROJECT_ROOT }}
-      MCP_LOG_LEVEL: debug
-```
-
----
-
-## Project-Local Configuration
-
-For project-specific settings, create a `.continuerc.yaml` file in your project root:
-
-```yaml
-mcpServers:
-  - name: file-context
-    command: ./go-mcp-file-context-server.exe
-    args:
-      - "-root-dir"
-      - "."
-      - "-log-dir"
-      - "./logs"
-      - "-log-level"
-      - "debug"
+**macOS/Linux:**
+```json
+{
+  "mcpServers": {
+    "file-context": {
+      "command": "/usr/local/bin/go-mcp-file-context-server",
+      "args": ["-root-dir", "/home/user/projects", "-log-level", "debug"]
+    }
+  }
+}
 ```
 
 ---
@@ -218,7 +112,7 @@ Once connected, the following tools are available in agent mode:
 | Argument | Description | Default |
 |----------|-------------|---------|
 | `-root-dir <path>` | Restrict file access to this directory | No restriction |
-| `-log-dir <path>` | Directory for log files | `~/go-mcp-file-context-server/logs` |
+| `-log-dir <path>` | Directory for log files | See Log File Location |
 | `-log-level <level>` | Logging verbosity | `info` |
 
 ### Log Levels
@@ -243,7 +137,7 @@ C:\Users\YourName\go-mcp-file-context-server\logs\go-mcp-file-context-server-YYY
 
 **macOS/Linux:**
 ```
-~/go-mcp-file-context-server/logs/go-mcp-file-context-server-YYYY-MM-DD.log
+/home/username/go-mcp-file-context-server/logs/go-mcp-file-context-server-YYYY-MM-DD.log
 ```
 
 ---
@@ -290,32 +184,3 @@ After editing configuration:
 | Permission denied | Ensure binary is executable (`chmod +x` on macOS/Linux) |
 | Config syntax error | Validate YAML syntax (indentation matters) |
 | Path issues on Windows | Use forward slashes (`/`) in YAML paths |
-
----
-
-## Migration from Legacy Format
-
-If you have an older configuration using `experimental.modelContextProtocolServers`, migrate to the new `mcpServers` format:
-
-**Old format (deprecated):**
-```yaml
-experimental:
-  modelContextProtocolServers:
-    - name: file-context
-      transport:
-        type: stdio
-        command: /path/to/binary
-        args:
-          - "-arg1"
-          - "value1"
-```
-
-**New format:**
-```yaml
-mcpServers:
-  - name: file-context
-    command: /path/to/binary
-    args:
-      - "-arg1"
-      - "value1"
-```
