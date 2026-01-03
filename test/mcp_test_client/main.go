@@ -845,6 +845,8 @@ func runProtocolTests(runner *TestRunner) {
 			"list_context_files", "read_context", "search_context",
 			"analyze_code", "generate_outline", "cache_stats",
 			"get_chunk_count", "getFiles", "get_folder_structure",
+			"write_file", "create_directory", "copy_file",
+			"move_file", "delete_file", "modify_file",
 		}
 
 		if len(tools) != len(expectedTools) {
