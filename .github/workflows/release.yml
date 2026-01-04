@@ -1,15 +1,11 @@
-name: Release
+name: Build and Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version tag (e.g., v1.0.0)'
-        required: true
-        default: 'v1.0.0'
 
 permissions:
   contents: write
@@ -54,14 +50,12 @@ jobs:
         run: go mod download
 
       - name: Build for all platforms
-        env:
-          VERSION: ${{ github.ref_name || github.event.inputs.version }}
         run: |
           mkdir -p dist
 
           # Darwin (macOS) - build both architectures then create universal binary
-          GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -X main.Version=$VERSION" -o dist/go-mcp-file-context-server-darwin-amd64 .
-          GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w -X main.Version=$VERSION" -o dist/go-mcp-file-context-server-darwin-arm64 .
+          GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o dist/go-mcp-file-context-server-darwin-amd64 .
+          GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o dist/go-mcp-file-context-server-darwin-arm64 .
 
           # Create universal binary using lipo
           lipo -create -output dist/go-mcp-file-context-server-darwin-universal \
@@ -72,11 +66,11 @@ jobs:
           rm dist/go-mcp-file-context-server-darwin-amd64 dist/go-mcp-file-context-server-darwin-arm64
 
           # Linux
-          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -X main.Version=$VERSION" -o dist/go-mcp-file-context-server-linux-amd64 .
-          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w -X main.Version=$VERSION" -o dist/go-mcp-file-context-server-linux-arm64 .
+          GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o dist/go-mcp-file-context-server-linux-amd64 .
+          GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -ldflags="-s -w" -o dist/go-mcp-file-context-server-linux-arm64 .
 
           # Windows
-          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w -X main.Version=$VERSION" -o dist/go-mcp-file-context-server-windows-amd64.exe .
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o dist/go-mcp-file-context-server-windows-amd64.exe .
 
       - name: Generate checksums
         run: |
@@ -91,25 +85,14 @@ jobs:
           path: dist/
 
   release:
-    name: Create Release
+    name: Release
     needs: build
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Delete existing release if exists
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          TAG="${{ github.ref_name || github.event.inputs.version }}"
-          echo "Checking for existing release with tag: $TAG"
-          if gh release view "$TAG" > /dev/null 2>&1; then
-            echo "Existing release found. Deleting release (keeping tag for this build)..."
-            gh release delete "$TAG" --yes || true
-          else
-            echo "No existing release found for $TAG"
-          fi
 
       - name: Download artifacts
         uses: actions/download-artifact@v4
@@ -117,65 +100,61 @@ jobs:
           name: binaries
           path: dist/
 
+      - name: Delete existing release
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ github.ref_name || github.event.inputs.version }}
-          name: Release ${{ github.ref_name || github.event.inputs.version }}
+          tag_name: latest
+          name: Latest Build
           body: |
-            ## go-mcp-file-context-server ${{ github.ref_name || github.event.inputs.version }}
+            Automated build from main branch.
+
+            ## go-mcp-file-context-server
 
             A Go port of the MCP File Context Server providing file system context to LLMs.
 
-            ### Downloads
+            ## Downloads
 
             | Platform | Architecture | File |
             |----------|--------------|------|
-            | macOS | Universal (Intel + Apple Silicon) | `go-mcp-file-context-server-darwin-universal` |
-            | Linux | x86_64 | `go-mcp-file-context-server-linux-amd64` |
-            | Linux | ARM64 | `go-mcp-file-context-server-linux-arm64` |
-            | Windows | x86_64 | `go-mcp-file-context-server-windows-amd64.exe` |
+            | macOS | Universal (Intel + Apple Silicon) | go-mcp-file-context-server-darwin-universal |
+            | Linux | x64 | go-mcp-file-context-server-linux-amd64 |
+            | Linux | ARM64 | go-mcp-file-context-server-linux-arm64 |
+            | Windows | x64 | go-mcp-file-context-server-windows-amd64.exe |
 
-            ### Installation
+            ## Installation
 
             1. Download the appropriate binary for your platform
             2. Make it executable (macOS/Linux): `chmod +x go-mcp-file-context-server-*`
             3. Add to your Claude Desktop config or run directly
 
-            ### Verification
+            ## Features
 
-            Use the checksums.txt file to verify your download:
-            ```bash
-            shasum -a 256 -c checksums.txt
-            ```
-
-            ### Features
-
-            - File Operations (read, list, search)
+            - File Operations (read, write, list, search, copy, move, delete)
             - Code Analysis (complexity, dependencies, quality metrics)
             - Smart LRU Caching
             - Code Outline Generation
             - Batch File Retrieval
 
-            All binaries are statically compiled with CGO disabled for maximum portability.
-          draft: false
+            ## Verification
+
+            Use the checksums.txt file to verify your download:
+            ```bash
+            shasum -a 256 -c checksums.txt
+            ```
+          draft: true
           prerelease: false
           files: |
             dist/*
-
-      - name: Cleanup old releases (keep newest 5)
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          echo "Fetching all releases..."
-          RELEASES=$(gh release list --limit 100 --json tagName,createdAt --jq 'sort_by(.createdAt) | reverse | .[5:] | .[].tagName')
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-          if [ -z "$RELEASES" ]; then
-            echo "No old releases to delete (5 or fewer exist)"
-          else
-            echo "Deleting old releases (keeping newest 5)..."
-            for TAG in $RELEASES; do
-              echo "Deleting release: $TAG"
-              gh release delete "$TAG" --yes --cleanup-tag || true
-            done
-          fi
+      - name: Publish Release
+        run: gh release edit latest --draft=false
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
