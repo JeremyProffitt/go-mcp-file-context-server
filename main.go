@@ -314,6 +314,16 @@ EXAMPLES:
 }
 
 func registerTools(server *mcp.Server) {
+	// list_allowed_directories tool - returns configured access restrictions
+	server.RegisterTool(mcp.Tool{
+		Name:        "list_allowed_directories",
+		Description: "Returns the list of allowed root directories and blocked patterns configured for this server",
+		InputSchema: mcp.JSONSchema{
+			Type:       "object",
+			Properties: map[string]mcp.Property{},
+		},
+	}, handleListAllowedDirectories)
+
 	// list_context_files tool
 	server.RegisterTool(mcp.Tool{
 		Name:        "list_context_files",
@@ -681,6 +691,33 @@ func registerTools(server *mcp.Server) {
 			Required: []string{"path", "find", "replace"},
 		},
 	}, handleModifyFile)
+}
+
+func handleListAllowedDirectories(args map[string]interface{}) (*mcp.CallToolResult, error) {
+	logger.ToolCall("list_allowed_directories", args)
+
+	result := struct {
+		AllowedDirectories []string `json:"allowed_directories"`
+		BlockedPatterns    []string `json:"blocked_patterns"`
+		Instructions       string   `json:"instructions"`
+	}{
+		AllowedDirectories: allowedRootDirs,
+		BlockedPatterns:    blockedPatterns,
+	}
+
+	if len(allowedRootDirs) == 0 {
+		result.Instructions = "No directory restrictions. All paths are accessible except those matching blocked patterns."
+	} else {
+		result.Instructions = "File access is restricted to the listed directories. Paths matching blocked patterns are always denied."
+	}
+
+	jsonBytes, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		logger.Error("list_allowed_directories: failed to marshal result: %v", err)
+		return errorResult("Failed to generate result")
+	}
+
+	return textResult(string(jsonBytes))
 }
 
 func handleListContextFiles(args map[string]interface{}) (*mcp.CallToolResult, error) {
