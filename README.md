@@ -184,7 +184,8 @@ Add to your Claude Desktop configuration file:
     "file-context": {
       "command": "/path/to/go-mcp-file-context-server",
       "env": {
-        "MCP_ROOT_DIR": "/Users/username/projects/myproject",
+        "MCP_ROOT_DIR": "/Users/username/projects,/Users/username/work",
+        "MCP_BLOCKED_PATTERNS": ".aws/*,.env,.mcp_env,secrets/*",
         "MCP_LOG_DIR": "/var/log/mcp-file-context",
         "MCP_LOG_LEVEL": "debug"
       }
@@ -588,7 +589,8 @@ Create `~/.mcp_env` with KEY=VALUE pairs:
 # ~/.mcp_env - MCP Server Environment Variables
 
 # File Context Server Configuration
-MCP_ROOT_DIR=~/projects
+MCP_ROOT_DIR=~/projects,~/work
+MCP_BLOCKED_PATTERNS=.aws/*,.env,.mcp_env
 MCP_LOG_DIR=~/mcp-logs
 MCP_LOG_LEVEL=info
 ```
@@ -600,13 +602,15 @@ MCP_LOG_LEVEL=info
 - Values can be quoted with single or double quotes
 - **Existing environment variables are NOT overwritten** (env vars take precedence)
 - Paths with `~` are automatically expanded to your home directory
+- Multiple root directories can be specified with comma separation
+- Blocked patterns support glob syntax (e.g., `.aws/*`, `secrets/**`)
 
 ### Path Expansion
 
 All path-related settings support `~` expansion:
 
 ```bash
-MCP_ROOT_DIR=~/projects/my-app
+MCP_ROOT_DIR=~/projects/my-app,~/work/other-project
 MCP_LOG_DIR=~/logs/file-context
 ```
 
