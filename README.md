@@ -569,6 +569,42 @@ With regex:
 - Ruby
 - PHP
 
+## Global Environment File
+
+All go-mcp servers support loading environment variables from `~/.mcp_env`. This provides a central location to configure credentials and settings, especially useful on macOS where GUI applications don't inherit shell environment variables from `.zshrc` or `.bashrc`.
+
+### File Format
+
+Create `~/.mcp_env` with KEY=VALUE pairs:
+
+```bash
+# ~/.mcp_env - MCP Server Environment Variables
+
+# File Context Server Configuration
+MCP_ROOT_DIR=~/projects
+MCP_LOG_DIR=~/mcp-logs
+MCP_LOG_LEVEL=info
+```
+
+### Features
+
+- Lines starting with `#` are treated as comments
+- Empty lines are ignored
+- Values can be quoted with single or double quotes
+- **Existing environment variables are NOT overwritten** (env vars take precedence)
+- Paths with `~` are automatically expanded to your home directory
+
+### Path Expansion
+
+All path-related settings support `~` expansion:
+
+```bash
+MCP_ROOT_DIR=~/projects/my-app
+MCP_LOG_DIR=~/logs/file-context
+```
+
+This works in the `~/.mcp_env` file, environment variables, and command-line flags.
+
 ## Log File Location
 
 By default, log files are stored in:

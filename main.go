@@ -36,6 +36,10 @@ var logger *logging.Logger
 var allowedRootDir string // If set, restricts all file operations to this directory
 
 func main() {
+	// Load environment variables from ~/.mcp_env if it exists
+	// This must happen before flag parsing so env vars are available for defaults
+	logging.LoadEnvFile()
+
 	// Parse command line flags
 	logDir := flag.String("log-dir", "", "Directory for log files (default: ~/go-mcp-file-context-server/logs)")
 	logLevel := flag.String("log-level", "info", "Log level: off, error, warn, info, access, debug")
@@ -88,10 +92,10 @@ func main() {
 	var resolvedRootDir string
 	var rootDirSource logging.ConfigSource
 	if *rootDir != "" {
-		resolvedRootDir = *rootDir
+		resolvedRootDir = logging.ExpandPath(*rootDir)
 		rootDirSource = logging.SourceFlag
 	} else if envVal := os.Getenv(EnvRootDir); envVal != "" {
-		resolvedRootDir = envVal
+		resolvedRootDir = logging.ExpandPath(envVal)
 		rootDirSource = logging.SourceEnvironment
 	} else {
 		resolvedRootDir = ""
