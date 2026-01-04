@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/JeremyProffitt/go-mcp-file-context-server/pkg/analysis"
@@ -13,6 +14,7 @@ import (
 	"github.com/JeremyProffitt/go-mcp-file-context-server/pkg/files"
 	"github.com/JeremyProffitt/go-mcp-file-context-server/pkg/logging"
 	"github.com/JeremyProffitt/go-mcp-file-context-server/pkg/mcp"
+	"github.com/bmatcuk/doublestar/v4"
 )
 
 const (
@@ -26,14 +28,23 @@ const (
 
 // Environment variable names
 const (
-	EnvLogDir   = "MCP_LOG_DIR"
-	EnvLogLevel = "MCP_LOG_LEVEL"
-	EnvRootDir  = "MCP_ROOT_DIR"
+	EnvLogDir          = "MCP_LOG_DIR"
+	EnvLogLevel        = "MCP_LOG_LEVEL"
+	EnvRootDir         = "MCP_ROOT_DIR"
+	EnvBlockedPatterns = "MCP_BLOCKED_PATTERNS"
 )
+
+// DefaultBlockedPatterns are blocked by default for security
+var DefaultBlockedPatterns = []string{
+	".aws/*",
+	".env",
+	".mcp_env",
+}
 
 var fileCache *cache.Cache
 var logger *logging.Logger
-var allowedRootDir string // If set, restricts all file operations to this directory
+var allowedRootDirs []string // If set, restricts all file operations to these directories
+var blockedPatterns []string // Patterns to block access to
 
 func main() {
 	// Load environment variables from ~/.mcp_env if it exists
@@ -43,7 +54,8 @@ func main() {
 	// Parse command line flags
 	logDir := flag.String("log-dir", "", "Directory for log files (default: ~/go-mcp-file-context-server/logs)")
 	logLevel := flag.String("log-level", "info", "Log level: off, error, warn, info, access, debug")
-	rootDir := flag.String("root-dir", "", "Root directory to restrict file access (default: no restriction)")
+	rootDir := flag.String("root-dir", "", "Root directories to restrict file access, comma-separated (default: no restriction)")
+	blockedPatternsFlag := flag.String("blocked-patterns", "", "Patterns to block, comma-separated (default: .aws/*,.env,.mcp_env)")
 	showVersion := flag.Bool("version", false, "Show version information")
 	showHelp := flag.Bool("help", false, "Show help information")
 	flag.Parse()
@@ -61,15 +73,19 @@ func main() {
 	// Resolve log directory (CLI flag > env var > default) and track source
 	var resolvedLogDir string
 	var logDirSource logging.ConfigSource
+	var addAppSubfolder bool
 	if *logDir != "" {
 		resolvedLogDir = *logDir
 		logDirSource = logging.SourceFlag
+		addAppSubfolder = true // User specified a shared log directory
 	} else if envVal := os.Getenv(EnvLogDir); envVal != "" {
 		resolvedLogDir = envVal
 		logDirSource = logging.SourceEnvironment
+		addAppSubfolder = true // User specified a shared log directory
 	} else {
 		resolvedLogDir = logging.DefaultLogDir(AppName)
 		logDirSource = logging.SourceDefault
+		addAppSubfolder = false // Default already includes app name
 	}
 
 	// Resolve log level (CLI flag > env var > default) and track source
@@ -88,44 +104,74 @@ func main() {
 	}
 	parsedLogLevel := logging.ParseLogLevel(resolvedLogLevel)
 
-	// Resolve root directory (CLI flag > env var > no restriction) and track source
-	var resolvedRootDir string
+	// Resolve root directories (CLI flag > env var > no restriction) and track source
+	var resolvedRootDirs string
 	var rootDirSource logging.ConfigSource
 	if *rootDir != "" {
-		resolvedRootDir = logging.ExpandPath(*rootDir)
+		resolvedRootDirs = *rootDir
 		rootDirSource = logging.SourceFlag
 	} else if envVal := os.Getenv(EnvRootDir); envVal != "" {
-		resolvedRootDir = logging.ExpandPath(envVal)
+		resolvedRootDirs = envVal
 		rootDirSource = logging.SourceEnvironment
 	} else {
-		resolvedRootDir = ""
+		resolvedRootDirs = ""
 		rootDirSource = logging.SourceDefault
 	}
-	if resolvedRootDir != "" {
-		absRoot, err := filepath.Abs(resolvedRootDir)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Invalid root directory %q: %v\n", resolvedRootDir, err)
-			os.Exit(1)
+
+	// Parse comma-separated root directories
+	if resolvedRootDirs != "" {
+		for _, dir := range parseCommaSeparated(resolvedRootDirs) {
+			expanded := logging.ExpandPath(dir)
+			absRoot, err := filepath.Abs(expanded)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Invalid root directory %q: %v\n", dir, err)
+				os.Exit(1)
+			}
+			// Verify the directory exists
+			info, err := os.Stat(absRoot)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Root directory does not exist %q: %v\n", absRoot, err)
+				os.Exit(1)
+			}
+			if !info.IsDir() {
+				fmt.Fprintf(os.Stderr, "Root path is not a directory: %q\n", absRoot)
+				os.Exit(1)
+			}
+			allowedRootDirs = append(allowedRootDirs, absRoot)
 		}
-		// Verify the directory exists
-		info, err := os.Stat(absRoot)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Root directory does not exist %q: %v\n", absRoot, err)
-			os.Exit(1)
-		}
-		if !info.IsDir() {
-			fmt.Fprintf(os.Stderr, "Root path is not a directory: %q\n", absRoot)
-			os.Exit(1)
-		}
-		allowedRootDir = absRoot
+	}
+
+	// Resolve blocked patterns (CLI flag > env var > defaults)
+	var resolvedBlockedPatterns string
+	var blockedPatternsSource logging.ConfigSource
+	var blockedPatternsSet bool
+	if *blockedPatternsFlag != "" {
+		resolvedBlockedPatterns = *blockedPatternsFlag
+		blockedPatternsSource = logging.SourceFlag
+		blockedPatternsSet = true
+	} else if envVal, exists := os.LookupEnv(EnvBlockedPatterns); exists {
+		resolvedBlockedPatterns = envVal
+		blockedPatternsSource = logging.SourceEnvironment
+		blockedPatternsSet = true
+	} else {
+		blockedPatternsSource = logging.SourceDefault
+		blockedPatternsSet = false
+	}
+
+	// Parse blocked patterns - use defaults if not explicitly set
+	if blockedPatternsSet {
+		blockedPatterns = parseCommaSeparated(resolvedBlockedPatterns)
+	} else {
+		blockedPatterns = DefaultBlockedPatterns
 	}
 
 	// Initialize logger
 	var err error
 	logger, err = logging.NewLogger(logging.Config{
-		LogDir:  resolvedLogDir,
-		AppName: AppName,
-		Level:   parsedLogLevel,
+		LogDir:          resolvedLogDir,
+		AppName:         AppName,
+		Level:           parsedLogLevel,
+		AddAppSubfolder: addAppSubfolder,
 	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to initialize logger: %v\n", err)
@@ -134,11 +180,19 @@ func main() {
 	defer logger.Close()
 
 	// Log startup information with configuration sources
+	rootDirsStr := strings.Join(allowedRootDirs, ", ")
+	if rootDirsStr == "" {
+		rootDirsStr = "(no restriction)"
+	}
+	blockedPatternsStr := strings.Join(blockedPatterns, ", ")
+	if blockedPatternsStr == "" {
+		blockedPatternsStr = "(none)"
+	}
 	startupInfo := logging.GetStartupInfo(
 		Version,
 		logging.ConfigValue{Value: resolvedLogDir, Source: logDirSource},
 		logging.ConfigValue{Value: resolvedLogLevel, Source: logLevelSource},
-		logging.ConfigValue{Value: allowedRootDir, Source: rootDirSource},
+		logging.ConfigValue{Value: rootDirsStr, Source: rootDirSource},
 		DefaultCacheSize,
 		DefaultCacheTTL,
 		DefaultMaxSize,
@@ -156,11 +210,14 @@ func main() {
 	logger.Info("Cache initialized: size=%d, ttl=%s", DefaultCacheSize, DefaultCacheTTL)
 
 	// Log root directory restriction
-	if allowedRootDir != "" {
-		logger.Info("Root directory restriction enabled: %s", allowedRootDir)
+	if len(allowedRootDirs) > 0 {
+		logger.Info("Root directory restriction enabled: %s", rootDirsStr)
 	} else {
 		logger.Info("Root directory restriction: disabled (full filesystem access)")
 	}
+
+	// Log blocked patterns
+	logger.Info("Blocked patterns (%s): %s", blockedPatternsSource, blockedPatternsStr)
 
 	// Create MCP server
 	server := mcp.NewServer("file-context-server", Version)
@@ -191,9 +248,14 @@ USAGE:
     %s [OPTIONS]
 
 OPTIONS:
-    -root-dir <path>    Root directory to restrict file access
+    -root-dir <paths>   Root directories to restrict file access (comma-separated)
                         Default: no restriction (full filesystem access)
                         Env: MCP_ROOT_DIR
+
+    -blocked-patterns <patterns>
+                        Patterns to block access to (comma-separated globs)
+                        Default: .aws/*,.env,.mcp_env
+                        Env: MCP_BLOCKED_PATTERNS
 
     -log-dir <path>     Directory for log files
                         Default: ~/go-mcp-file-context-server/logs
@@ -208,9 +270,12 @@ OPTIONS:
     -help               Show this help message
 
 ENVIRONMENT VARIABLES:
-    MCP_ROOT_DIR        Restrict file access to this directory
-    MCP_LOG_DIR         Override default log directory
-    MCP_LOG_LEVEL       Override default log level
+    MCP_ROOT_DIR           Restrict file access to these directories (comma-separated)
+    MCP_BLOCKED_PATTERNS   Block access to files matching these patterns (comma-separated)
+                           Default: .aws/*,.env,.mcp_env
+                           Set to empty string to disable blocking
+    MCP_LOG_DIR            Override default log directory
+    MCP_LOG_LEVEL          Override default log level
 
 LOG LEVELS:
     off      Disable all logging
@@ -221,11 +286,20 @@ LOG LEVELS:
     debug    Log detailed debugging information
 
 EXAMPLES:
-    # Run with default settings (full filesystem access)
+    # Run with default settings (full filesystem access, default blocked patterns)
     %s
 
     # Restrict access to a specific project directory
     %s -root-dir /home/user/myproject
+
+    # Restrict access to multiple directories
+    %s -root-dir "/home/user/project1,/home/user/project2,~/shared"
+
+    # Custom blocked patterns (replaces defaults)
+    %s -blocked-patterns ".env,secrets/*,*.pem,*.key"
+
+    # Disable all blocked patterns
+    MCP_BLOCKED_PATTERNS="" %s
 
     # Run with custom log directory
     %s -log-dir /var/log/mcp
@@ -234,9 +308,9 @@ EXAMPLES:
     %s -log-level debug
 
     # Using environment variables
-    MCP_ROOT_DIR=/home/user/project MCP_LOG_LEVEL=access %s
+    MCP_ROOT_DIR=~/projects,~/work MCP_LOG_LEVEL=access %s
 
-`, AppName, AppName, AppName, AppName, AppName, AppName, AppName)
+`, AppName, AppName, AppName, AppName, AppName, AppName, AppName, AppName, AppName, AppName)
 }
 
 func registerTools(server *mcp.Server) {
@@ -943,7 +1017,57 @@ func handleGetFolderStructure(args map[string]interface{}) (*mcp.CallToolResult,
 
 // Helper functions
 
-// validatePath checks if the given path is within the allowed root directory.
+// parseCommaSeparated splits a comma-separated string into a slice, trimming whitespace
+func parseCommaSeparated(value string) []string {
+	if value == "" {
+		return nil
+	}
+	parts := strings.Split(value, ",")
+	var result []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			result = append(result, p)
+		}
+	}
+	return result
+}
+
+// isBlockedPath checks if the given absolute path matches any blocked pattern
+func isBlockedPath(absPath string) bool {
+	if len(blockedPatterns) == 0 {
+		return false
+	}
+
+	// Normalize path separators for matching
+	normalizedPath := filepath.ToSlash(absPath)
+	baseName := filepath.Base(absPath)
+
+	for _, pattern := range blockedPatterns {
+		// Normalize pattern separators
+		normalizedPattern := filepath.ToSlash(pattern)
+
+		// Check against the base filename (e.g., ".env" matches "/path/to/.env")
+		if matched, _ := doublestar.Match(normalizedPattern, baseName); matched {
+			return true
+		}
+
+		// Check against path components for directory patterns (e.g., ".aws/*")
+		// Walk through path to find matching segments
+		parts := strings.Split(normalizedPath, "/")
+		for i := range parts {
+			// Build subpath from this point
+			subpath := strings.Join(parts[i:], "/")
+			if matched, _ := doublestar.Match(normalizedPattern, subpath); matched {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// validatePath checks if the given path is allowed.
+// It checks blocked patterns first (deny takes precedence), then root directories.
 // Returns the absolute path if valid, or an error if access is denied.
 func validatePath(path string) (string, error) {
 	absPath, err := filepath.Abs(path)
@@ -951,29 +1075,24 @@ func validatePath(path string) (string, error) {
 		return "", fmt.Errorf("invalid path: %w", err)
 	}
 
-	// If no root directory restriction, allow all paths
-	if allowedRootDir == "" {
+	// Check blocked patterns first (deny takes precedence)
+	if isBlockedPath(absPath) {
+		return "", fmt.Errorf("access denied: path %q matches blocked pattern", path)
+	}
+
+	// If no root directory restrictions, allow all paths
+	if len(allowedRootDirs) == 0 {
 		return absPath, nil
 	}
 
-	// Check if the absolute path is within the allowed root directory
-	// Use filepath.Rel to check if path is relative to root (not starting with ..)
-	relPath, err := filepath.Rel(allowedRootDir, absPath)
-	if err != nil {
-		return "", fmt.Errorf("access denied: path outside allowed directory")
+	// Check if path is within ANY allowed root directory
+	for _, rootDir := range allowedRootDirs {
+		if isSubPath(rootDir, absPath) {
+			return absPath, nil
+		}
 	}
 
-	// If the relative path starts with "..", it's outside the root
-	if len(relPath) >= 2 && relPath[:2] == ".." {
-		return "", fmt.Errorf("access denied: path %q is outside allowed directory %q", path, allowedRootDir)
-	}
-
-	// Also check for absolute paths that might have been crafted to escape
-	if !isSubPath(allowedRootDir, absPath) {
-		return "", fmt.Errorf("access denied: path %q is outside allowed directory %q", path, allowedRootDir)
-	}
-
-	return absPath, nil
+	return "", fmt.Errorf("access denied: path %q is outside allowed directories", path)
 }
 
 // isSubPath checks if child is a subpath of parent

@@ -84,8 +84,12 @@ go build -o go-mcp-file-context-server .
 Usage: go-mcp-file-context-server [OPTIONS]
 
 Options:
-  -root-dir <path>    Root directory to restrict file access
+  -root-dir <paths>   Root directories to restrict file access (comma-separated)
                       Default: no restriction (full filesystem access)
+
+  -blocked-patterns <patterns>
+                      Patterns to block access to (comma-separated globs)
+                      Default: .aws/*,.env,.mcp_env
 
   -log-dir <path>     Directory for log files
                       Default: ~/go-mcp-file-context-server/logs
@@ -102,9 +106,12 @@ Options:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `MCP_ROOT_DIR` | Restrict file access to this directory | No restriction |
+| `MCP_ROOT_DIR` | Restrict file access to these directories (comma-separated) | No restriction |
+| `MCP_BLOCKED_PATTERNS` | Block access to files matching these patterns (comma-separated globs) | `.aws/*,.env,.mcp_env` |
 | `MCP_LOG_DIR` | Directory for log files | `~/go-mcp-file-context-server/logs` |
 | `MCP_LOG_LEVEL` | Log level (off, error, warn, info, access, debug) | `info` |
+
+**Note:** Setting `MCP_BLOCKED_PATTERNS` to an empty string disables all file blocking.
 
 ### Configuration Priority
 
@@ -615,6 +622,14 @@ By default, log files are stored in:
 | Windows | `%USERPROFILE%\go-mcp-file-context-server\logs\` |
 
 Log files are named with the format: `go-mcp-file-context-server-YYYY-MM-DD.log`
+
+When `MCP_LOG_DIR` is set or `-log-dir` flag is used, logs are automatically placed in a subfolder named after the binary. This allows multiple MCP servers to share the same log directory:
+
+```
+MCP_LOG_DIR=/var/log/mcp
+  └── go-mcp-file-context-server/
+      └── go-mcp-file-context-server-2025-01-15.log
+```
 
 ### Sample Log Output
 
