@@ -1,0 +1,85 @@
+{
+  "family": "go-mcp-file-context-server",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::YOUR_ACCOUNT_ID:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::YOUR_ACCOUNT_ID:role/ecsTaskRole",
+  "containerDefinitions": [
+    {
+      "name": "go-mcp-file-context-server",
+      "image": "YOUR_ACCOUNT_ID.dkr.ecr.YOUR_REGION.amazonaws.com/go-mcp-file-context-server:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 3000,
+          "hostPort": 3000,
+          "protocol": "tcp"
+        }
+      ],
+      "environment": [
+        {
+          "name": "MCP_LOG_LEVEL",
+          "value": "info"
+        },
+        {
+          "name": "MCP_ROOT_DIR",
+          "value": "/data"
+        },
+        {
+          "name": "MCP_BLOCKED_PATTERNS",
+          "value": ".aws/*,.env,.mcp_env,*.pem,*.key"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "MCP_AUTH_TOKEN",
+          "valueFrom": "arn:aws:secretsmanager:YOUR_REGION:YOUR_ACCOUNT_ID:secret:mcp/file-context:MCP_AUTH_TOKEN::"
+        }
+      ],
+      "mountPoints": [
+        {
+          "sourceVolume": "data-volume",
+          "containerPath": "/data",
+          "readOnly": false
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/go-mcp-file-context-server",
+          "awslogs-region": "YOUR_REGION",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command": ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/health || exit 1"],
+        "interval": 30,
+        "timeout": 10,
+        "retries": 3,
+        "startPeriod": 5
+      }
+    }
+  ],
+  "volumes": [
+    {
+      "name": "data-volume",
+      "efsVolumeConfiguration": {
+        "fileSystemId": "fs-XXXXXXXX",
+        "rootDirectory": "/",
+        "transitEncryption": "ENABLED"
+      }
+    }
+  ],
+  "tags": [
+    {
+      "key": "Application",
+      "value": "go-mcp-file-context-server"
+    },
+    {
+      "key": "Environment",
+      "value": "production"
+    }
+  ]
+}

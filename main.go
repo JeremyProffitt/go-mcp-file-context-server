@@ -56,6 +56,9 @@ func main() {
 	logLevel := flag.String("log-level", "info", "Log level: off, error, warn, info, access, debug")
 	rootDir := flag.String("root-dir", "", "Root directories to restrict file access, comma-separated (default: no restriction)")
 	blockedPatternsFlag := flag.String("blocked-patterns", "", "Patterns to block, comma-separated (default: .aws/*,.env,.mcp_env)")
+	httpMode := flag.Bool("http", false, "Run in HTTP mode instead of stdio")
+	httpPort := flag.Int("port", 3000, "HTTP port (only used with --http)")
+	httpHost := flag.String("host", "127.0.0.1", "HTTP host (only used with --http)")
 	showVersion := flag.Bool("version", false, "Show version information")
 	showHelp := flag.Bool("help", false, "Show help information")
 	flag.Parse()
@@ -229,11 +232,22 @@ func main() {
 
 	// Run the server
 	logger.Info("Starting MCP server...")
-	if err := server.Run(); err != nil {
-		logger.Error("Server error: %v", err)
-		logger.LogShutdown(fmt.Sprintf("error: %v", err))
-		fmt.Fprintf(os.Stderr, "Server error: %v\n", err)
-		os.Exit(1)
+	if *httpMode {
+		addr := fmt.Sprintf("%s:%d", *httpHost, *httpPort)
+		logger.Info("Starting HTTP server on %s", addr)
+		if err := server.RunHTTP(addr); err != nil {
+			logger.Error("HTTP server error: %v", err)
+			logger.LogShutdown(fmt.Sprintf("error: %v", err))
+			fmt.Fprintf(os.Stderr, "HTTP server error: %v\n", err)
+			os.Exit(1)
+		}
+	} else {
+		if err := server.Run(); err != nil {
+			logger.Error("Server error: %v", err)
+			logger.LogShutdown(fmt.Sprintf("error: %v", err))
+			fmt.Fprintf(os.Stderr, "Server error: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
 	logger.LogShutdown("normal exit")
