@@ -331,379 +331,433 @@ func registerTools(server *mcp.Server) {
 	// list_allowed_directories tool - returns configured access restrictions
 	server.RegisterTool(mcp.Tool{
 		Name:        "list_allowed_directories",
-		Description: "Returns the list of allowed root directories and blocked patterns configured for this server",
+		Description: "Returns the list of allowed root directories and blocked patterns configured for this server. Use this tool first to understand what paths are accessible before attempting file operations.",
 		InputSchema: mcp.JSONSchema{
 			Type:       "object",
 			Properties: map[string]mcp.Property{},
 		},
+		Annotations: readOnlyAnnotations(),
 	}, handleListAllowedDirectories)
 
 	// list_context_files tool
 	server.RegisterTool(mcp.Tool{
 		Name:        "list_context_files",
-		Description: "Lists files in a directory with detailed metadata",
+		Description: "Lists files in a directory with detailed metadata (name, size, modification time, type). Use this when you need to discover what files exist in a directory and their properties. For reading actual file contents, use read_context instead. For a visual tree representation, use get_folder_structure.",
 		InputSchema: mcp.JSONSchema{
 			Type: "object",
 			Properties: map[string]mcp.Property{
 				"path": {
 					Type:        "string",
-					Description: "Directory path to list files from",
+					Description: "Absolute or relative path to the directory to list files from",
+					Examples:    []interface{}{"/home/user/project", "./src", "C:\\Users\\project"},
 				},
 				"recursive": {
 					Type:        "boolean",
-					Description: "Include subdirectories",
+					Description: "If true, includes files from all subdirectories recursively. If false, only lists files in the immediate directory.",
 					Default:     true,
 				},
 				"includeHidden": {
 					Type:        "boolean",
-					Description: "Include hidden files",
+					Description: "Include hidden files (files starting with '.')",
 					Default:     false,
 				},
 				"fileTypes": {
 					Type:        "array",
-					Description: "Filter by file extensions (without dots)",
+					Description: "Filter results to only include files with these extensions (without leading dots)",
 					Items:       &mcp.Property{Type: "string"},
+					Examples:    []interface{}{[]string{"go", "ts", "py"}, []string{"json", "yaml", "yml"}},
 				},
 			},
 			Required: []string{"path"},
 		},
+		Annotations: readOnlyAnnotations(),
 	}, handleListContextFiles)
 
 	// read_context tool
 	server.RegisterTool(mcp.Tool{
 		Name:        "read_context",
-		Description: "Reads file or directory contents with metadata and caching",
+		Description: "Reads and returns the actual contents of a file or directory. For a single file: returns the file content with metadata. For a directory: returns contents of all matching files. Large files are automatically chunked - use chunkNumber to paginate. Results are cached for performance. Use this when you need to examine actual file contents, not just metadata.",
 		InputSchema: mcp.JSONSchema{
 			Type: "object",
 			Properties: map[string]mcp.Property{
 				"path": {
 					Type:        "string",
-					Description: "File or directory path to read",
+					Description: "Absolute or relative path to the file or directory to read",
+					Examples:    []interface{}{"/home/user/project/main.go", "./src/index.ts", "C:\\Users\\project\\README.md"},
 				},
 				"maxSize": {
-					Type:        "number",
-					Description: "Maximum file size in bytes",
+					Type:        "integer",
+					Description: "Maximum file size in bytes. Files larger than this will be chunked.",
 					Default:     float64(DefaultMaxSize),
+					Minimum:     int64Ptr(1),
+					Maximum:     int64Ptr(100 * 1024 * 1024), // 100MB
 				},
 				"encoding": {
 					Type:        "string",
-					Description: "Character encoding",
+					Description: "Character encoding for reading text files",
 					Default:     "utf8",
+					Examples:    []interface{}{"utf8", "ascii", "latin1"},
 				},
 				"recursive": {
 					Type:        "boolean",
-					Description: "Include subdirectories for directory paths",
+					Description: "If true and path is a directory, includes files from all subdirectories recursively. If false, only reads files in the immediate directory.",
 					Default:     true,
 				},
 				"fileTypes": {
 					Type:        "array",
-					Description: "Filter by file extensions (without dots)",
+					Description: "Filter results to only include files with these extensions (without leading dots)",
 					Items:       &mcp.Property{Type: "string"},
+					Examples:    []interface{}{[]string{"go", "ts", "py"}, []string{"json", "yaml", "yml"}},
 				},
 				"chunkNumber": {
-					Type:        "number",
-					Description: "Chunk number for large files (0-indexed)",
+					Type:        "integer",
+					Description: "For large files that exceed maxSize, specify which chunk to retrieve (0-indexed). Use get_chunk_count to determine total chunks.",
 					Default:     float64(0),
+					Minimum:     int64Ptr(0),
 				},
 			},
 			Required: []string{"path"},
 		},
+		Annotations: readOnlyAnnotations(),
 	}, handleReadContext)
 
 	// search_context tool
 	server.RegisterTool(mcp.Tool{
 		Name:        "search_context",
-		Description: "Searches for patterns in files with context",
+		Description: "Searches for regex patterns in file contents and returns matching lines with surrounding context. Use this to find specific code patterns, function definitions, variable usages, or any text pattern across multiple files.",
 		InputSchema: mcp.JSONSchema{
 			Type: "object",
 			Properties: map[string]mcp.Property{
 				"pattern": {
 					Type:        "string",
-					Description: "Regex pattern to search for",
+					Description: "Regular expression pattern to search for. Supports standard regex syntax.",
+					Examples:    []interface{}{"func\\s+\\w+", "TODO|FIXME", "import.*react"},
 				},
 				"path": {
 					Type:        "string",
-					Description: "Directory to search in",
+					Description: "Absolute or relative path to the directory to search in",
+					Examples:    []interface{}{"/home/user/project", "./src", "C:\\Users\\project"},
 				},
 				"recursive": {
 					Type:        "boolean",
-					Description: "Search in subdirectories",
+					Description: "If true, searches in all subdirectories recursively. If false, only searches files in the immediate directory.",
 					Default:     true,
 				},
 				"fileTypes": {
 					Type:        "array",
-					Description: "Filter by file extensions (without dots)",
+					Description: "Filter results to only search files with these extensions (without leading dots)",
 					Items:       &mcp.Property{Type: "string"},
+					Examples:    []interface{}{[]string{"go", "ts", "py"}, []string{"json", "yaml", "yml"}},
 				},
 				"contextLines": {
-					Type:        "number",
-					Description: "Number of context lines before/after matches",
+					Type:        "integer",
+					Description: "Number of lines to include before and after each match for context",
 					Default:     float64(2),
+					Minimum:     int64Ptr(0),
+					Maximum:     int64Ptr(50),
 				},
 				"maxResults": {
-					Type:        "number",
-					Description: "Maximum number of results to return",
+					Type:        "integer",
+					Description: "Maximum number of matching results to return. Use to limit output for common patterns.",
 					Default:     float64(100),
+					Minimum:     int64Ptr(1),
+					Maximum:     int64Ptr(10000),
 				},
 			},
 			Required: []string{"pattern", "path"},
 		},
+		Annotations: readOnlyAnnotations(),
 	}, handleSearchContext)
 
 	// analyze_code tool
 	server.RegisterTool(mcp.Tool{
 		Name:        "analyze_code",
-		Description: "Analyzes code files for complexity, dependencies, and quality metrics",
+		Description: "Analyzes code files and returns metrics including complexity scores, dependency counts, lines of code, and quality indicators. For directories, provides aggregate metrics across all files. Use this to assess code quality and identify complex areas.",
 		InputSchema: mcp.JSONSchema{
 			Type: "object",
 			Properties: map[string]mcp.Property{
 				"path": {
 					Type:        "string",
-					Description: "File or directory path to analyze",
+					Description: "Absolute or relative path to the file or directory to analyze",
+					Examples:    []interface{}{"/home/user/project/main.go", "./src", "C:\\Users\\project"},
 				},
 				"recursive": {
 					Type:        "boolean",
-					Description: "Analyze subdirectories",
+					Description: "If true and path is a directory, analyzes files in all subdirectories recursively. If false, only analyzes files in the immediate directory.",
 					Default:     true,
 				},
 				"fileTypes": {
 					Type:        "array",
-					Description: "Filter by file extensions (without dots)",
+					Description: "Filter results to only analyze files with these extensions (without leading dots)",
 					Items:       &mcp.Property{Type: "string"},
+					Examples:    []interface{}{[]string{"go", "ts", "py"}, []string{"js", "jsx", "tsx"}},
 				},
 			},
 			Required: []string{"path"},
 		},
+		Annotations: readOnlyAnnotations(),
 	}, handleAnalyzeCode)
 
 	// generate_outline tool
 	server.RegisterTool(mcp.Tool{
 		Name:        "generate_outline",
-		Description: "Generates a code outline showing classes, functions, and imports",
+		Description: "Generates a structural outline of a code file showing imports, classes, functions, and methods with their line numbers. Use this to quickly understand the structure of a file without reading its full contents.",
 		InputSchema: mcp.JSONSchema{
 			Type: "object",
 			Properties: map[string]mcp.Property{
 				"path": {
 					Type:        "string",
-					Description: "File path to generate outline for",
+					Description: "Absolute or relative path to the file to generate an outline for",
+					Examples:    []interface{}{"/home/user/project/main.go", "./src/index.ts", "C:\\Users\\project\\app.py"},
 				},
 			},
 			Required: []string{"path"},
 		},
+		Annotations: readOnlyAnnotations(),
 	}, handleGenerateOutline)
 
 	// cache_stats tool
 	server.RegisterTool(mcp.Tool{
 		Name:        "cache_stats",
-		Description: "Returns cache statistics and performance metrics",
+		Description: "Returns cache statistics including hit/miss rates, memory usage, and optionally details about cached entries. Use this to monitor cache performance and diagnose caching issues.",
 		InputSchema: mcp.JSONSchema{
 			Type: "object",
 			Properties: map[string]mcp.Property{
 				"detailed": {
 					Type:        "boolean",
-					Description: "Include detailed entry information",
+					Description: "If true, includes a list of all cached file entries with their sizes and ages. If false, returns only aggregate statistics.",
 					Default:     false,
 				},
 			},
 		},
+		Annotations: readOnlyAnnotations(),
 	}, handleCacheStats)
 
 	// get_chunk_count tool
 	server.RegisterTool(mcp.Tool{
 		Name:        "get_chunk_count",
-		Description: "Gets the total number of chunks for a file or directory",
+		Description: "Returns the total number of chunks needed to read a large file. Use this before calling read_context with chunkNumber to know how many iterations are needed to read the complete file.",
 		InputSchema: mcp.JSONSchema{
 			Type: "object",
 			Properties: map[string]mcp.Property{
 				"path": {
 					Type:        "string",
-					Description: "File or directory path",
+					Description: "Absolute or relative path to the file to get chunk count for",
+					Examples:    []interface{}{"/home/user/project/large-file.log", "./data/export.csv"},
 				},
 				"chunkSize": {
-					Type:        "number",
-					Description: "Size of each chunk in bytes",
+					Type:        "integer",
+					Description: "Size of each chunk in bytes. Must match the chunkSize used in read_context for consistent pagination.",
 					Default:     float64(DefaultChunkSize),
+					Minimum:     int64Ptr(1024),          // 1KB minimum
+					Maximum:     int64Ptr(10 * 1024 * 1024), // 10MB maximum
 				},
 			},
 			Required: []string{"path"},
 		},
+		Annotations: readOnlyAnnotations(),
 	}, handleGetChunkCount)
 
-	// getFiles tool
+	// get_files tool (batch file retrieval)
 	server.RegisterTool(mcp.Tool{
-		Name:        "getFiles",
-		Description: "Batch retrieve multiple files at once",
+		Name:        "get_files",
+		Description: "Batch retrieve contents of multiple files in a single request. More efficient than calling read_context multiple times when you need to read several known files. Returns a map of file paths to their contents.",
 		InputSchema: mcp.JSONSchema{
 			Type: "object",
 			Properties: map[string]mcp.Property{
 				"filePathList": {
 					Type:        "array",
-					Description: "List of file paths to retrieve",
+					Description: "List of file path objects to retrieve",
 					Items: &mcp.Property{
 						Type: "object",
 						Properties: map[string]mcp.Property{
 							"fileName": {
 								Type:        "string",
-								Description: "Path to the file",
+								Description: "Absolute or relative path to the file to retrieve",
+								Examples:    []interface{}{"/home/user/project/main.go", "./src/index.ts"},
 							},
 						},
+					},
+					Examples: []interface{}{
+						[]map[string]string{{"fileName": "./src/main.go"}, {"fileName": "./src/utils.go"}},
 					},
 				},
 			},
 			Required: []string{"filePathList"},
 		},
+		Annotations: readOnlyAnnotations(),
 	}, handleGetFiles)
 
 	// get_folder_structure tool
 	server.RegisterTool(mcp.Tool{
 		Name:        "get_folder_structure",
-		Description: "Returns a tree representation of the folder structure",
+		Description: "Returns a visual tree representation of the directory structure showing folders and files hierarchically. Use this to understand project layout and organization. For detailed file metadata, use list_context_files instead.",
 		InputSchema: mcp.JSONSchema{
 			Type: "object",
 			Properties: map[string]mcp.Property{
 				"path": {
 					Type:        "string",
-					Description: "Directory path",
+					Description: "Absolute or relative path to the directory to visualize",
+					Examples:    []interface{}{"/home/user/project", "./src", "C:\\Users\\project"},
 				},
 				"maxDepth": {
-					Type:        "number",
-					Description: "Maximum depth to traverse (0 for unlimited)",
+					Type:        "integer",
+					Description: "Maximum directory depth to traverse. Use 0 for unlimited depth. Lower values improve performance for large directories.",
 					Default:     float64(5),
+					Minimum:     int64Ptr(0),
+					Maximum:     int64Ptr(50),
 				},
 			},
 			Required: []string{"path"},
 		},
+		Annotations: readOnlyAnnotations(),
 	}, handleGetFolderStructure)
 
 	// write_file tool
 	server.RegisterTool(mcp.Tool{
 		Name:        "write_file",
-		Description: "Create a new file or overwrite an existing file with new content. Creates parent directories if they don't exist.",
+		Description: "Create a new file or completely overwrite an existing file with new content. Creates parent directories automatically if they do not exist. Warning: this will replace the entire file contents.",
 		InputSchema: mcp.JSONSchema{
 			Type: "object",
 			Properties: map[string]mcp.Property{
 				"path": {
 					Type:        "string",
-					Description: "Path to the file to write",
+					Description: "Absolute or relative path to the file to create or overwrite",
+					Examples:    []interface{}{"/home/user/project/new-file.txt", "./src/config.json"},
 				},
 				"content": {
 					Type:        "string",
-					Description: "Content to write to the file",
+					Description: "The complete content to write to the file",
 				},
 			},
 			Required: []string{"path", "content"},
 		},
+		Annotations: writeAnnotations(),
 	}, handleWriteFile)
 
 	// create_directory tool
 	server.RegisterTool(mcp.Tool{
 		Name:        "create_directory",
-		Description: "Create a new directory or ensure a directory exists. Creates parent directories if needed.",
+		Description: "Create a new directory or ensure a directory exists. Creates all necessary parent directories automatically. Safe to call on existing directories.",
 		InputSchema: mcp.JSONSchema{
 			Type: "object",
 			Properties: map[string]mcp.Property{
 				"path": {
 					Type:        "string",
-					Description: "Path to the directory to create",
+					Description: "Absolute or relative path to the directory to create",
+					Examples:    []interface{}{"/home/user/project/new-folder", "./src/components/ui"},
 				},
 			},
 			Required: []string{"path"},
 		},
+		Annotations: writeAnnotations(),
 	}, handleCreateDirectory)
 
 	// copy_file tool
 	server.RegisterTool(mcp.Tool{
 		Name:        "copy_file",
-		Description: "Copy a file or directory from source to destination. Supports recursive copying for directories.",
+		Description: "Copy a file or directory from source to destination. For directories, performs a recursive copy of all contents. Creates destination parent directories if needed.",
 		InputSchema: mcp.JSONSchema{
 			Type: "object",
 			Properties: map[string]mcp.Property{
 				"source": {
 					Type:        "string",
-					Description: "Source file or directory path",
+					Description: "Absolute or relative path to the source file or directory to copy",
+					Examples:    []interface{}{"/home/user/project/file.txt", "./src/template"},
 				},
 				"destination": {
 					Type:        "string",
-					Description: "Destination path",
+					Description: "Absolute or relative path to the destination location",
+					Examples:    []interface{}{"/home/user/project/file-backup.txt", "./src/new-component"},
 				},
 			},
 			Required: []string{"source", "destination"},
 		},
+		Annotations: writeAnnotations(),
 	}, handleCopyFile)
 
 	// move_file tool
 	server.RegisterTool(mcp.Tool{
 		Name:        "move_file",
-		Description: "Move or rename a file or directory from source to destination.",
+		Description: "Move or rename a file or directory from source to destination. The source is removed after successful move. Creates destination parent directories if needed.",
 		InputSchema: mcp.JSONSchema{
 			Type: "object",
 			Properties: map[string]mcp.Property{
 				"source": {
 					Type:        "string",
-					Description: "Source file or directory path",
+					Description: "Absolute or relative path to the source file or directory to move",
+					Examples:    []interface{}{"/home/user/project/old-name.txt", "./src/legacy"},
 				},
 				"destination": {
 					Type:        "string",
-					Description: "Destination path",
+					Description: "Absolute or relative path to the destination location",
+					Examples:    []interface{}{"/home/user/project/new-name.txt", "./src/current"},
 				},
 			},
 			Required: []string{"source", "destination"},
 		},
+		Annotations: writeAnnotations(),
 	}, handleMoveFile)
 
 	// delete_file tool
 	server.RegisterTool(mcp.Tool{
 		Name:        "delete_file",
-		Description: "Delete a file or directory from the file system.",
+		Description: "Permanently delete a file or directory from the file system. Warning: this action cannot be undone. For non-empty directories, the recursive flag must be set to true.",
 		InputSchema: mcp.JSONSchema{
 			Type: "object",
 			Properties: map[string]mcp.Property{
 				"path": {
 					Type:        "string",
-					Description: "Path to the file or directory to delete",
+					Description: "Absolute or relative path to the file or directory to delete",
+					Examples:    []interface{}{"/home/user/project/temp.txt", "./build", "C:\\Users\\project\\cache"},
 				},
 				"recursive": {
 					Type:        "boolean",
-					Description: "If true, delete directories recursively (required for non-empty directories)",
+					Description: "If true, deletes directories and all their contents recursively. Required for non-empty directories. Use with caution.",
 					Default:     false,
 				},
 			},
 			Required: []string{"path"},
 		},
+		Annotations: destructiveAnnotations(),
 	}, handleDeleteFile)
 
 	// modify_file tool
 	server.RegisterTool(mcp.Tool{
 		Name:        "modify_file",
-		Description: "Find and replace text in a file. Supports both literal string matching and regular expressions.",
+		Description: "Find and replace text within a file. Supports both literal string matching and regular expressions. Use this for targeted edits rather than rewriting entire files with write_file.",
 		InputSchema: mcp.JSONSchema{
 			Type: "object",
 			Properties: map[string]mcp.Property{
 				"path": {
 					Type:        "string",
-					Description: "Path to the file to modify",
+					Description: "Absolute or relative path to the file to modify",
+					Examples:    []interface{}{"/home/user/project/config.json", "./src/index.ts"},
 				},
 				"find": {
 					Type:        "string",
-					Description: "Text or regex pattern to find",
+					Description: "Text or regex pattern to search for in the file",
+					Examples:    []interface{}{"oldFunctionName", "version: \"1.0.0\"", "import\\s+.*from\\s+'lodash'"},
 				},
 				"replace": {
 					Type:        "string",
-					Description: "Replacement text",
+					Description: "Text to replace matches with. For regex mode, can include capture group references ($1, $2, etc.)",
+					Examples:    []interface{}{"newFunctionName", "version: \"2.0.0\""},
 				},
 				"all_occurrences": {
 					Type:        "boolean",
-					Description: "If true, replace all occurrences; otherwise replace only the first",
+					Description: "If true, replaces all matching occurrences in the file. If false, replaces only the first match.",
 					Default:     true,
 				},
 				"regex": {
 					Type:        "boolean",
-					Description: "If true, treat 'find' as a regular expression",
+					Description: "If true, interprets the 'find' parameter as a regular expression pattern. If false, performs literal string matching.",
 					Default:     false,
 				},
 			},
 			Required: []string{"path", "find", "replace"},
 		},
+		Annotations: writeAnnotations(),
 	}, handleModifyFile)
 }
 
@@ -990,15 +1044,15 @@ func handleGetChunkCount(args map[string]interface{}) (*mcp.CallToolResult, erro
 }
 
 func handleGetFiles(args map[string]interface{}) (*mcp.CallToolResult, error) {
-	logger.ToolCall("getFiles", args)
+	logger.ToolCall("get_files", args)
 
 	filePathList, ok := args["filePathList"].([]interface{})
 	if !ok {
-		logger.Error("getFiles: invalid filePathList parameter")
+		logger.Error("get_files: invalid filePathList parameter")
 		return errorResult("Invalid filePathList")
 	}
 
-	logger.Debug("getFiles: processing %d files", len(filePathList))
+	logger.Debug("get_files: processing %d files", len(filePathList))
 	results := make(map[string]interface{})
 	var totalBytesRead int64
 
@@ -1015,7 +1069,7 @@ func handleGetFiles(args map[string]interface{}) (*mcp.CallToolResult, error) {
 
 		absPath, err := validatePath(fileName)
 		if err != nil {
-			logger.Error("getFiles: %v", err)
+			logger.Error("get_files: %v", err)
 			results[fileName] = map[string]interface{}{
 				"error": err.Error(),
 			}
@@ -1024,7 +1078,7 @@ func handleGetFiles(args map[string]interface{}) (*mcp.CallToolResult, error) {
 
 		content, err := files.ReadFile(absPath, DefaultMaxSize)
 		if err != nil {
-			logger.Error("getFiles: failed to read file %q: %v", absPath, err)
+			logger.Error("get_files: failed to read file %q: %v", absPath, err)
 			logger.FileRead(absPath, 0, err)
 			results[fileName] = map[string]interface{}{
 				"error": err.Error(),
@@ -1037,7 +1091,7 @@ func handleGetFiles(args map[string]interface{}) (*mcp.CallToolResult, error) {
 		results[fileName] = content
 	}
 
-	logger.Debug("getFiles: read %d files, total %d bytes", len(results), totalBytesRead)
+	logger.Debug("get_files: read %d files, total %d bytes", len(results), totalBytesRead)
 
 	data, _ := json.MarshalIndent(results, "", "  ")
 	return textResult(string(data))
@@ -1212,6 +1266,34 @@ func getString(args map[string]interface{}, key string, defaultVal string) strin
 		return val
 	}
 	return defaultVal
+}
+
+// Helper functions for tool annotations
+func boolPtr(b bool) *bool {
+	return &b
+}
+
+func int64Ptr(i int64) *int64 {
+	return &i
+}
+
+func readOnlyAnnotations() *mcp.ToolAnnotations {
+	return &mcp.ToolAnnotations{
+		ReadOnlyHint: boolPtr(true),
+	}
+}
+
+func writeAnnotations() *mcp.ToolAnnotations {
+	return &mcp.ToolAnnotations{
+		ReadOnlyHint: boolPtr(false),
+	}
+}
+
+func destructiveAnnotations() *mcp.ToolAnnotations {
+	return &mcp.ToolAnnotations{
+		ReadOnlyHint:    boolPtr(false),
+		DestructiveHint: boolPtr(true),
+	}
 }
 
 func handleWriteFile(args map[string]interface{}) (*mcp.CallToolResult, error) {

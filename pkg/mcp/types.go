@@ -65,9 +65,24 @@ type InitializeResult struct {
 
 // Tool types
 type Tool struct {
-	Name        string     `json:"name"`
-	Description string     `json:"description,omitempty"`
-	InputSchema JSONSchema `json:"inputSchema"`
+	Name        string           `json:"name"`
+	Description string           `json:"description,omitempty"`
+	InputSchema JSONSchema       `json:"inputSchema"`
+	Annotations *ToolAnnotations `json:"annotations,omitempty"`
+}
+
+// ToolAnnotations provides hints about a tool's behavior for LLM clients
+type ToolAnnotations struct {
+	// Title is a human-readable title for the tool
+	Title string `json:"title,omitempty"`
+	// ReadOnlyHint indicates whether the tool only reads data (true) or may modify state (false)
+	ReadOnlyHint *bool `json:"readOnlyHint,omitempty"`
+	// DestructiveHint indicates whether the tool may perform destructive operations like deletion
+	DestructiveHint *bool `json:"destructiveHint,omitempty"`
+	// IdempotentHint indicates whether calling the tool multiple times with same args has same effect
+	IdempotentHint *bool `json:"idempotentHint,omitempty"`
+	// OpenWorldHint indicates whether the tool interacts with external entities
+	OpenWorldHint *bool `json:"openWorldHint,omitempty"`
 }
 
 type JSONSchema struct {
@@ -85,6 +100,9 @@ type Property struct {
 	Enum        []string            `json:"enum,omitempty"`
 	Items       *Property           `json:"items,omitempty"`
 	Properties  map[string]Property `json:"properties,omitempty"`
+	Minimum     *int64              `json:"minimum,omitempty"`
+	Maximum     *int64              `json:"maximum,omitempty"`
+	Examples    []interface{}       `json:"examples,omitempty"`
 }
 
 type ListToolsResult struct {
