@@ -2,6 +2,24 @@
 
 This guide covers deploying go-mcp-file-context-server as an HTTP service on AWS ECS (Elastic Container Service) using either Fargate or EC2 launch types.
 
+## LLM Usage Notes
+
+When the MCP server is deployed on ECS, LLMs connect via HTTP instead of stdio. Key differences:
+
+| Aspect | Local (stdio) | ECS (HTTP) |
+|--------|---------------|------------|
+| Connection | Direct process | HTTP to ALB endpoint |
+| Authentication | None (local) | `X-MCP-Auth-Token` header required |
+| File access | Local filesystem | EFS-mounted paths only |
+| Root restriction | `-root-dir` flag | `MCP_ROOT_DIR` env var |
+
+**Important for LLMs:** When working with ECS-deployed servers:
+- All file paths are relative to the EFS mount point (typically `/data`)
+- Use `list_allowed_directories` to see what paths are accessible
+- Authentication errors (401) mean the token is missing or incorrect
+
+---
+
 ## Architecture Overview
 
 ```

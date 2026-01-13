@@ -1,5 +1,52 @@
 # Project Guidelines
 
+## LLM Usage Guide for go-mcp-file-context-server
+
+This MCP server provides file system context to LLMs. When using these tools, follow these best practices:
+
+### Quick Start for LLMs
+
+**First interaction with a new codebase:**
+1. Use `get_folder_structure` to understand the project layout
+2. Use `list_context_files` to see file details (sizes, dates)
+3. Use `read_context` to read specific files
+
+**DO:**
+- Start with discovery tools before reading files
+- Use `fileTypes` filter to limit results (e.g., `["go", "py"]`)
+- Use `maxDepth` parameter for large projects
+- Use `getFiles` for batch reading instead of multiple `read_context` calls
+- Check `get_chunk_count` before reading potentially large files
+
+**DON'T:**
+- Read entire directories recursively without filtering
+- Ignore file size limits (default 10MB max)
+- Skip the discovery phase and read random files
+
+### Tool Quick Reference
+
+| Task | Tool | Key Parameters |
+|------|------|----------------|
+| See project structure | `get_folder_structure` | `path`, `maxDepth` |
+| List files with details | `list_context_files` | `path`, `recursive`, `fileTypes` |
+| Read single file | `read_context` | `path`, `chunkNumber` |
+| Read multiple files | `getFiles` | `filePathList` |
+| Find code patterns | `search_context` | `pattern`, `contextLines` |
+| Analyze code quality | `analyze_code` | `path`, `recursive` |
+| See code structure | `generate_outline` | `path` |
+| Write/overwrite file | `write_file` | `path`, `content` |
+| Find and replace | `modify_file` | `path`, `find`, `replace`, `regex` |
+
+### Error Handling
+
+Common errors and how to resolve them:
+- **"File too large"**: Use `chunkNumber` parameter to read in chunks
+- **"Path outside root"**: The path is outside allowed directories
+- **"Pattern blocked"**: File matches a blocked pattern (e.g., `.env`)
+- **"File not found"**: Check path, use `list_context_files` to verify existence
+
+---
+
 ## AWS Deployment Policy
 
 **CRITICAL: All AWS infrastructure and code changes MUST be deployed via GitHub Actions pipelines.**

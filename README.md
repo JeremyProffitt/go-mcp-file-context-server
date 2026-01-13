@@ -387,6 +387,81 @@ mcpServers:
 
 **Note:** Using `-root-dir "."` restricts access to the current working directory.
 
+## Tool Reference
+
+This section provides a categorized overview of all available tools to help LLMs quickly identify the right tool for each task.
+
+### Tool Categories
+
+| Category | Tools | Purpose |
+|----------|-------|---------|
+| **Discovery** | `list_context_files`, `get_folder_structure` | Understand project structure before reading files |
+| **Reading** | `read_context`, `getFiles` | Retrieve file contents |
+| **Search** | `search_context` | Find patterns across files |
+| **Analysis** | `analyze_code`, `generate_outline` | Understand code quality and structure |
+| **Writing** | `write_file`, `create_directory`, `copy_file`, `move_file`, `delete_file`, `modify_file` | Modify filesystem |
+| **Utility** | `cache_stats`, `get_chunk_count` | Performance and chunking info |
+
+### Tool Selection Guide
+
+**When to use `list_context_files` vs `read_context` vs `get_folder_structure`:**
+
+| Scenario | Best Tool | Why |
+|----------|-----------|-----|
+| "What files exist in this project?" | `get_folder_structure` | Returns tree view of entire directory structure efficiently |
+| "Show me all .go files in src/" | `list_context_files` | Returns filtered file list with metadata (size, modified date) |
+| "Read the contents of main.go" | `read_context` | Returns actual file content |
+| "What's in the config directory?" | `list_context_files` | Shows directory contents with details |
+| "Give me an overview of the codebase" | `get_folder_structure` + `list_context_files` | Structure first, then targeted file lists |
+
+**Decision flowchart for file operations:**
+
+1. **Need to understand project layout?** -> `get_folder_structure` (maxDepth: 3-5)
+2. **Need to find specific file types?** -> `list_context_files` with `fileTypes` filter
+3. **Need to read file contents?** -> `read_context` for single file, `getFiles` for multiple
+4. **Need to find code patterns?** -> `search_context` with regex pattern
+5. **Need to understand code structure?** -> `generate_outline` for classes/functions/imports
+6. **Need code quality metrics?** -> `analyze_code` for complexity and issues
+
+### Common Workflows
+
+**Workflow 1: Exploring a new codebase**
+```
+1. get_folder_structure(path: ".", maxDepth: 3)     # Understand layout
+2. list_context_files(path: ".", recursive: true)   # See all files with sizes
+3. read_context(path: "README.md")                  # Read documentation
+4. generate_outline(path: "src/main.go")            # Understand entry point
+```
+
+**Workflow 2: Finding and fixing a bug**
+```
+1. search_context(pattern: "error|bug|TODO", path: "src/", contextLines: 3)
+2. read_context(path: "src/problematic_file.go")
+3. modify_file(path: "src/problematic_file.go", find: "buggy_code", replace: "fixed_code")
+```
+
+**Workflow 3: Code review and analysis**
+```
+1. analyze_code(path: "src/", recursive: true)      # Get complexity metrics
+2. generate_outline(path: "src/main.go")            # See code structure
+3. search_context(pattern: "TODO|FIXME|HACK")       # Find tech debt
+```
+
+**Workflow 4: Batch file reading**
+```
+1. list_context_files(path: "src/", fileTypes: ["go"])  # Get file list
+2. getFiles(filePathList: [{"fileName": "src/a.go"}, {"fileName": "src/b.go"}])
+```
+
+**Workflow 5: Large file handling**
+```
+1. get_chunk_count(path: "large_file.log")          # Check chunk count
+2. read_context(path: "large_file.log", chunkNumber: 0)  # Read first chunk
+3. read_context(path: "large_file.log", chunkNumber: 1)  # Read next chunk
+```
+
+---
+
 ## Available Tools
 
 ### list_context_files

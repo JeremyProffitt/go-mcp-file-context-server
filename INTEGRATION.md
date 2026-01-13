@@ -2,6 +2,42 @@
 
 This guide explains how to configure MCP clients (Claude Code and Continue.dev) to connect to the go-mcp-file-context-server running in HTTP mode, including authentication configuration.
 
+## LLM Tool Selection Guide
+
+When connected to this server, use these tools based on your task:
+
+### Discovery Phase (Always Start Here)
+| Tool | When to Use | Key Parameters |
+|------|-------------|----------------|
+| `get_folder_structure` | First look at any project | `maxDepth: 3-5` for large projects |
+| `list_context_files` | See file details, filter by type | `fileTypes: ["go", "py"]` |
+| `list_allowed_directories` | Check which paths are accessible | None required |
+
+### Reading Files
+| Tool | When to Use | Key Parameters |
+|------|-------------|----------------|
+| `read_context` | Read single file | `chunkNumber` for large files |
+| `getFiles` | Read multiple files at once | `filePathList` array |
+| `get_chunk_count` | Check if file needs chunking | `path` to file |
+
+### Searching and Analysis
+| Tool | When to Use | Key Parameters |
+|------|-------------|----------------|
+| `search_context` | Find patterns in code | `pattern` (regex), `contextLines` |
+| `analyze_code` | Get code quality metrics | `recursive: true` for directories |
+| `generate_outline` | See classes/functions/imports | Single file `path` |
+
+### Writing and Modifying
+| Tool | When to Use | Key Parameters |
+|------|-------------|----------------|
+| `write_file` | Create or overwrite file | `path`, `content` |
+| `modify_file` | Find and replace text | `find`, `replace`, `regex: true` for patterns |
+| `create_directory` | Create new folder | `path` (creates parents too) |
+| `copy_file` / `move_file` | Copy or rename files | `source`, `destination` |
+| `delete_file` | Remove file or directory | `recursive: true` for directories |
+
+---
+
 ## Authentication Overview
 
 When running in HTTP mode with authentication enabled (via `MCP_AUTH_TOKEN` environment variable), all requests must include the `X-MCP-Auth-Token` header with the configured token value.

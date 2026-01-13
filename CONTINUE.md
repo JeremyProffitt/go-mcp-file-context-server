@@ -4,6 +4,18 @@ This guide covers integrating the go-mcp-file-context-server with Continue.dev f
 
 > **Important:** MCP tools can only be used in **agent mode** in Continue.dev.
 
+## LLM Quick Reference
+
+When using this MCP server in Continue.dev agent mode, remember:
+
+| Goal | Tool to Use | Example |
+|------|-------------|---------|
+| Explore project | `get_folder_structure` | `get_folder_structure(path: ".", maxDepth: 3)` |
+| Find specific files | `list_context_files` | `list_context_files(path: "src", fileTypes: ["ts", "tsx"])` |
+| Read a file | `read_context` | `read_context(path: "src/main.ts")` |
+| Search code | `search_context` | `search_context(pattern: "useState", path: "src")` |
+| Edit a file | `modify_file` | `modify_file(path: "file.ts", find: "old", replace: "new")` |
+
 ---
 
 ## YAML Configuration
