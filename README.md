@@ -91,6 +91,10 @@ Options:
                       Patterns to block access to (comma-separated globs)
                       Default: .aws/*,.env,.mcp_env
 
+  -allowed-patterns <patterns>
+                      Patterns to allow (exceptions to blocked patterns)
+                      Default: .aws/terraform,.aws/terraform/*,.aws/terraform/**
+
   -log-dir <path>     Directory for log files
                       Default: ~/go-mcp-file-context-server/logs
 
@@ -108,10 +112,13 @@ Options:
 |----------|-------------|---------|
 | `MCP_ROOT_DIR` | Restrict file access to these directories (comma-separated) | No restriction |
 | `MCP_BLOCKED_PATTERNS` | Block access to files matching these patterns (comma-separated globs) | `.aws/*,.env,.mcp_env` |
+| `MCP_ALLOWED_PATTERNS` | Allow access to files matching these patterns (exceptions to blocked, comma-separated globs) | `.aws/terraform,.aws/terraform/*,.aws/terraform/**` |
 | `MCP_LOG_DIR` | Directory for log files | `~/go-mcp-file-context-server/logs` |
 | `MCP_LOG_LEVEL` | Log level (off, error, warn, info, access, debug) | `info` |
 
-**Note:** Setting `MCP_BLOCKED_PATTERNS` to an empty string disables all file blocking.
+**Notes:**
+- Setting `MCP_BLOCKED_PATTERNS` to an empty string disables all file blocking.
+- Allowed patterns take precedence over blocked patterns (e.g., `.aws/terraform/*` is accessible even though `.aws/*` is blocked).
 
 ### Configuration Priority
 
@@ -186,6 +193,7 @@ Add to your Claude Desktop configuration file:
       "env": {
         "MCP_ROOT_DIR": "/Users/username/projects,/Users/username/work",
         "MCP_BLOCKED_PATTERNS": ".aws/*,.env,.mcp_env,secrets/*",
+        "MCP_ALLOWED_PATTERNS": ".aws/terraform,.aws/terraform/*,.aws/terraform/**",
         "MCP_LOG_DIR": "/var/log/mcp-file-context",
         "MCP_LOG_LEVEL": "debug"
       }
@@ -666,6 +674,7 @@ Create `~/.mcp_env` with KEY=VALUE pairs:
 # File Context Server Configuration
 MCP_ROOT_DIR=~/projects,~/work
 MCP_BLOCKED_PATTERNS=.aws/*,.env,.mcp_env
+MCP_ALLOWED_PATTERNS=.aws/terraform,.aws/terraform/*,.aws/terraform/**
 MCP_LOG_DIR=~/mcp-logs
 MCP_LOG_LEVEL=info
 ```
@@ -679,6 +688,7 @@ MCP_LOG_LEVEL=info
 - Paths with `~` are automatically expanded to your home directory
 - Multiple root directories can be specified with comma separation
 - Blocked patterns support glob syntax (e.g., `.aws/*`, `secrets/**`)
+- Allowed patterns create exceptions to blocked patterns (e.g., allow `.aws/terraform/*` while blocking `.aws/*`)
 
 ### Path Expansion
 

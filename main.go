@@ -32,6 +32,7 @@ const (
 	EnvLogLevel        = "MCP_LOG_LEVEL"
 	EnvRootDir         = "MCP_ROOT_DIR"
 	EnvBlockedPatterns = "MCP_BLOCKED_PATTERNS"
+	EnvAllowedPatterns = "MCP_ALLOWED_PATTERNS"
 )
 
 // DefaultBlockedPatterns are blocked by default for security
@@ -41,10 +42,18 @@ var DefaultBlockedPatterns = []string{
 	".mcp_env",
 }
 
+// DefaultAllowedPatterns are exceptions to blocked patterns (allowed even if they match a blocked pattern)
+var DefaultAllowedPatterns = []string{
+	".aws/terraform",
+	".aws/terraform/*",
+	".aws/terraform/**",
+}
+
 var fileCache *cache.Cache
 var logger *logging.Logger
 var allowedRootDirs []string // If set, restricts all file operations to these directories
 var blockedPatterns []string // Patterns to block access to
+var allowedPatterns []string // Patterns to allow (exceptions to blocked patterns)
 
 func main() {
 	// Load environment variables from ~/.mcp_env if it exists
@@ -56,6 +65,7 @@ func main() {
 	logLevel := flag.String("log-level", "info", "Log level: off, error, warn, info, access, debug")
 	rootDir := flag.String("root-dir", "", "Root directories to restrict file access, comma-separated (default: no restriction)")
 	blockedPatternsFlag := flag.String("blocked-patterns", "", "Patterns to block, comma-separated (default: .aws/*,.env,.mcp_env)")
+	allowedPatternsFlag := flag.String("allowed-patterns", "", "Patterns to allow (exceptions to blocked), comma-separated (default: .aws/terraform,.aws/terraform/*,.aws/terraform/**)")
 	httpMode := flag.Bool("http", false, "Run in HTTP mode instead of stdio")
 	httpPort := flag.Int("port", 3000, "HTTP port (only used with --http)")
 	httpHost := flag.String("host", "127.0.0.1", "HTTP host (only used with --http)")
@@ -168,6 +178,30 @@ func main() {
 		blockedPatterns = DefaultBlockedPatterns
 	}
 
+	// Resolve allowed patterns (CLI flag > env var > defaults)
+	var resolvedAllowedPatterns string
+	var allowedPatternsSource logging.ConfigSource
+	var allowedPatternsSet bool
+	if *allowedPatternsFlag != "" {
+		resolvedAllowedPatterns = *allowedPatternsFlag
+		allowedPatternsSource = logging.SourceFlag
+		allowedPatternsSet = true
+	} else if envVal, exists := os.LookupEnv(EnvAllowedPatterns); exists {
+		resolvedAllowedPatterns = envVal
+		allowedPatternsSource = logging.SourceEnvironment
+		allowedPatternsSet = true
+	} else {
+		allowedPatternsSource = logging.SourceDefault
+		allowedPatternsSet = false
+	}
+
+	// Parse allowed patterns - use defaults if not explicitly set
+	if allowedPatternsSet {
+		allowedPatterns = parseCommaSeparated(resolvedAllowedPatterns)
+	} else {
+		allowedPatterns = DefaultAllowedPatterns
+	}
+
 	// Initialize logger
 	var err error
 	logger, err = logging.NewLogger(logging.Config{
@@ -190,6 +224,10 @@ func main() {
 	blockedPatternsStr := strings.Join(blockedPatterns, ", ")
 	if blockedPatternsStr == "" {
 		blockedPatternsStr = "(none)"
+	}
+	allowedPatternsStr := strings.Join(allowedPatterns, ", ")
+	if allowedPatternsStr == "" {
+		allowedPatternsStr = "(none)"
 	}
 	startupInfo := logging.GetStartupInfo(
 		Version,
@@ -221,6 +259,9 @@ func main() {
 
 	// Log blocked patterns
 	logger.Info("Blocked patterns (%s): %s", blockedPatternsSource, blockedPatternsStr)
+
+	// Log allowed patterns (exceptions to blocked)
+	logger.Info("Allowed patterns (%s): %s", allowedPatternsSource, allowedPatternsStr)
 
 	// Create MCP server
 	server := mcp.NewServer("file-context-server", Version)
@@ -767,16 +808,18 @@ func handleListAllowedDirectories(args map[string]interface{}) (*mcp.CallToolRes
 	result := struct {
 		AllowedDirectories []string `json:"allowed_directories"`
 		BlockedPatterns    []string `json:"blocked_patterns"`
+		AllowedPatterns    []string `json:"allowed_patterns"`
 		Instructions       string   `json:"instructions"`
 	}{
 		AllowedDirectories: allowedRootDirs,
 		BlockedPatterns:    blockedPatterns,
+		AllowedPatterns:    allowedPatterns,
 	}
 
 	if len(allowedRootDirs) == 0 {
-		result.Instructions = "No directory restrictions. All paths are accessible except those matching blocked patterns."
+		result.Instructions = "No directory restrictions. All paths are accessible except those matching blocked patterns. Allowed patterns are exceptions to blocked patterns."
 	} else {
-		result.Instructions = "File access is restricted to the listed directories. Paths matching blocked patterns are always denied."
+		result.Instructions = "File access is restricted to the listed directories. Paths matching blocked patterns are denied unless they match an allowed pattern."
 	}
 
 	jsonBytes, err := json.MarshalIndent(result, "", "  ")
@@ -1138,8 +1181,46 @@ func parseCommaSeparated(value string) []string {
 	return result
 }
 
+// isAllowedPath checks if the given absolute path matches any allowed pattern (exceptions to blocked)
+func isAllowedPath(absPath string) bool {
+	if len(allowedPatterns) == 0 {
+		return false
+	}
+
+	// Normalize path separators for matching
+	normalizedPath := filepath.ToSlash(absPath)
+	baseName := filepath.Base(absPath)
+
+	for _, pattern := range allowedPatterns {
+		// Normalize pattern separators
+		normalizedPattern := filepath.ToSlash(pattern)
+
+		// Check against the base filename
+		if matched, _ := doublestar.Match(normalizedPattern, baseName); matched {
+			return true
+		}
+
+		// Check against path components for directory patterns
+		// Walk through path to find matching segments
+		parts := strings.Split(normalizedPath, "/")
+		for i := range parts {
+			// Build subpath from this point
+			subpath := strings.Join(parts[i:], "/")
+			if matched, _ := doublestar.Match(normalizedPattern, subpath); matched {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // isBlockedPath checks if the given absolute path matches any blocked pattern
 func isBlockedPath(absPath string) bool {
+	// Check allowed patterns first - if matched, path is NOT blocked
+	if isAllowedPath(absPath) {
+		return false
+	}
+
 	if len(blockedPatterns) == 0 {
 		return false
 	}
